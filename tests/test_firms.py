@@ -118,43 +118,35 @@ def test_acq_time_midnight_and_noon():
 # --- tabla 8.1: CSV con columna faltante ------------------------------------
 
 
-def test_missing_column_does_not_pass_silently():
-    """Comportamiento actual: falla. Lo que importa es que NO devuelva filas.
+def test_missing_column_raises_clear_error():
+    """Tabla 8.1: excepción clara, no `KeyError` opaco.
 
-    Una fila con `latitude` a nulo es peor que una excepción: se propaga hasta
-    el GeoJSON como un incendio en el golfo de Guinea.
+    Una fila con `latitude` a nulo sería peor que la excepción: se propagaría
+    hasta el GeoJSON como un incendio en el golfo de Guinea. Pero el mensaje
+    tiene que decir qué sensor, qué área y qué columnas llegaron, o depurarlo en
+    plena temporada cuesta una tarde.
     """
     raw = _synthetic_csv().drop(columns=["latitude"])
 
-    with pytest.raises(LookupError):
+    with pytest.raises(ValueError, match="latitude") as exc:
+        firms._normalize(raw)
+
+    mensaje = str(exc.value)
+    assert "VIIRS_NOAA20_NRT" in mensaje
+    assert "peninsula" in mensaje
+    assert "longitude" in mensaje  # lista de columnas recibidas
+
+
+def test_missing_brightness_column_is_reported():
+    """VIIRS trae `bright_ti4` y MODIS `brightness`. Sin ninguno, no hay hotspot."""
+    raw = _synthetic_csv().drop(columns=["bright_ti4"])
+
+    with pytest.raises(ValueError, match="bright_ti4"):
         firms._normalize(raw)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Tabla 8.1: 'Excepción clara, no KeyError opaco'. Hoy _normalize lanza "
-        "KeyError('latitude') sin decir qué fuente ni qué esquema falló. "
-        "Requiere tocar src/incendios/firms.py — pendiente de aprobación."
-    ),
-)
-def test_missing_column_raises_clear_error():
-    raw = _synthetic_csv().drop(columns=["latitude"])
-
-    with pytest.raises(ValueError, match="latitude"):
-        firms._normalize(raw)
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Bug real detectado: df.get('daynight', '') devuelve el str por defecto, "
-        "no una Serie, así que .astype(str) lanza AttributeError en vez de dejar "
-        "la columna vacía. Igual con df.get('brightness'), que devuelve None. "
-        "Requiere tocar src/incendios/firms.py — pendiente de aprobación."
-    ),
-)
 def test_optional_column_absent_does_not_crash():
+    """`daynight` es opcional: su ausencia deja la columna vacía, no rompe."""
     raw = _synthetic_csv().drop(columns=["daynight"])
 
     out = firms._normalize(raw)

@@ -37,6 +37,34 @@ MATCH_MAX_M = 15000.0
 # emparejarse con una detección satelital de esta mañana en el mismo valle.
 MATCH_WINDOW_HOURS = 48.0
 
+# Medio píxel VIIRS de 375 m: la incertidumbre real de una posición FIRMS.
+VIIRS_PIXEL_PRECISION_M = 375.0
+
+# Contrato de la sección 4.3. El frontend lee estos nombres; cambiarlos rompe el
+# visor en silencio, así que viven aquí y no repartidos por el código.
+INCIDENT_SCHEMA = [
+    "id",
+    "origin",
+    "satellite_confirmed",
+    "official_confirmed",
+    "confirmed_by",
+    "status",
+    "municipio",
+    "provincia",
+    "igr_level",
+    "resources_air",
+    "resources_ground",
+    "resources_people",
+    "n_hotspots",
+    "frp_total_mw",
+    "intensity",
+    "area_est_ha",
+    "position_precision_m",
+    "first_detected",
+    "last_detected",
+    "started_at",
+]
+
 
 def _metric_crs(lon: float) -> int:
     return CRS_METRIC_CANARIAS if lon < -12 else CRS_METRIC_MAINLAND
@@ -104,6 +132,30 @@ def match(
 
     ok = within_tol & within_time & joined["_cand_fire_id"].notna()
 
+    # `sjoin_nearest` va de oficial -> incendio, así que dos partes pueden elegir
+    # el mismo cluster. Si se aceptan los dos, ambos reciben el mismo fire_id y
+    # `build_incidents` los colapsa en un solo incidente: un incendio real
+    # desaparece del mapa (RF-P-06).
+    #
+    # El desempate es **por fuente**, no global. Un mismo servicio no notifica
+    # dos veces el mismo incendio: si 112 CV publica dos partes a 800 m, son dos
+    # incendios y solo el más próximo es el del cluster. Pero dos comunidades
+    # distintas sí pueden confirmar el mismo frente —un incendio en un límite
+    # provincial lo publican las dos— y ahí `confirmed_by` debe listarlas a
+    # ambas. Deduplicar por (cluster, fuente) satisface los dos casos.
+    candidatos = joined[ok].sort_values("_dist")
+    ganadores = candidatos.index[
+        ~candidatos.duplicated(subset=["_cand_fire_id", "source_id"], keep="first")
+    ]
+    descartados = int(ok.sum()) - len(ganadores)
+    if descartados:
+        log.info(
+            "Fusión: %d partes oficiales cedieron su cluster a uno más próximo "
+            "y siguen como huérfanos",
+            descartados,
+        )
+    ok = ok & joined.index.isin(ganadores)
+
     official.loc[ok.values, "fire_id"] = joined.loc[ok, "_cand_fire_id"].values
     official.loc[ok.values, "match_distance_m"] = joined.loc[ok, "_dist"].round(0).values
 
@@ -153,8 +205,13 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
     menos real, es menos localizado.
     """
     fires = fires.copy()
-    fires["origin"] = np.where(fires["confirmed_by"].astype(bool), "ambos", "satelite")
+    fires["official_confirmed"] = fires["confirmed_by"].astype(bool)
+    fires["origin"] = np.where(fires["official_confirmed"], "ambos", "satelite")
     fires["satellite_confirmed"] = True
+    # La posición del cluster viene de FIRMS: un píxel VIIRS de 375 m, así que
+    # el radio de incertidumbre es medio píxel. Es la mitad del producto (RF-F-03):
+    # dibujar un punto donde solo hay un área es fingir precisión.
+    fires["position_precision_m"] = float(VIIRS_PIXEL_PRECISION_M)
 
     orphans = official[official["fire_id"].isna()].copy()
     if not orphans.empty:
@@ -165,23 +222,45 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
         )
         orphans["origin"] = "oficial"
         orphans["satellite_confirmed"] = False
+        orphans["official_confirmed"] = True
         orphans["fire_id"] = "off_" + orphans["source_id"] + "_" + orphans["external_id"].astype(str)
         orphans["confirmed_by"] = orphans["source_id"]
         orphans["official_status"] = orphans["status"]
-        orphans["status"] = "activo"
+        # El huérfano hereda la precisión declarada por su fuente: los ±6 km de
+        # INFOCAM se dibujan como 6 km, no como un punto.
+        orphans["position_precision_m"] = orphans["precision_m"].astype(float)
+        orphans["n_hotspots"] = 0
+        orphans["frp_total_mw"] = 0.0
+        # Sin detección satelital no hay ventana temporal observada: el único
+        # instante conocido es cuando lo notificó la comunidad.
+        orphans["first_detected"] = orphans["reported_at"]
+        orphans["last_detected"] = orphans["reported_at"]
+        orphans["started_at"] = orphans["reported_at"]
+        orphans["status"] = orphans["official_status"].fillna("activo")
 
-    cols = [
-        "fire_id", "origin", "satellite_confirmed", "confirmed_by",
-        "official_status", "municipio", "provincia", "precision_m", "geometry",
-    ]
-    parts = [fires.reindex(columns=[c for c in fires.columns])]
+    parts = [fires]
     if not orphans.empty:
         parts.append(orphans)
 
     out = gpd.GeoDataFrame(pd.concat(parts, ignore_index=True), crs=CRS_WGS84)
-    for c in cols:
+
+    for c in INCIDENT_SCHEMA:
         if c not in out.columns:
             out[c] = None
+
+    # `id` es el nombre del contrato 4.3; `fire_id` es el interno del pipeline.
+    out["id"] = out["fire_id"]
+    out["n_hotspots"] = out["n_hotspots"].fillna(0).astype(int)
+    out["satellite_confirmed"] = out["satellite_confirmed"].astype(bool)
+    out["official_confirmed"] = out["official_confirmed"].astype(bool)
+    out["confirmed_by"] = out["confirmed_by"].fillna("")
+
+    # Invariante 8: un incendio extinguido no se publica. Se filtra aquí y no en
+    # export para que el recuento del manifest ya cuadre con lo publicado.
+    extinguidos = int((out["status"] == "extinguido").sum())
+    if extinguidos:
+        out = out[out["status"] != "extinguido"].reset_index(drop=True)
+        log.info("Incidentes: %d extinguidos filtrados (invariante 8)", extinguidos)
 
     log.info(
         "Incidentes: %d satelitales · %d oficiales huérfanos",

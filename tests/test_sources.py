@@ -188,16 +188,6 @@ def test_status_normalisation_prefers_extinguished_over_active():
 # --- tabla 8.1: la fuente cambia el nombre de un campo ----------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Tabla 8.1: 'Aviso explícito, no fila silenciosa con nulos'. Hoy un campo "
-        "renombrado hace que props.get() devuelva None, norm_status(None) devuelve "
-        "'desconocido' —que es un estado válido— y _finalize no avisa de nada. "
-        "La fuente sigue 'ok' en sources.json con todas las filas vacías. "
-        "Requiere tocar src/incendios/sources/ — pendiente de aprobación."
-    ),
-)
 def test_renamed_field_warns_instead_of_silent_nulls(caplog):
     """Es el modo de fallo del riesgo 1 de la sección 11: formato cambiado sin aviso."""
     payload = load_json_fixture("arcgis_framework_sample.json")
@@ -217,8 +207,12 @@ def test_renamed_field_warns_instead_of_silent_nulls(caplog):
     )
 
 
-def test_renamed_field_currently_yields_silent_nulls():
-    """Contrapartida del anterior: deja constancia del comportamiento de hoy."""
+def test_renamed_field_still_yields_nulls_but_no_longer_silently():
+    """El aviso no rellena los datos: la fuente sigue devolviendo nulos.
+
+    Arreglarlo de verdad es descubrir el nombre nuevo y actualizar el
+    `field_map`. Lo que cambia es que ahora se sabe que hay que hacerlo.
+    """
     payload = load_json_fixture("arcgis_framework_sample.json")
     fuente = ArcGISSource(
         meta=_meta(),

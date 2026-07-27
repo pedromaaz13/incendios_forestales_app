@@ -10,6 +10,8 @@ Muchos portales autonómicos publican sobre **ArcGIS FeatureServer**, así que
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pandas as pd
 
@@ -21,6 +23,29 @@ from .base import (
     OfficialSource,
     SourceMeta,
 )
+
+log = logging.getLogger(__name__)
+
+
+def warn_missing_fields(source_id: str, field_map: dict[str, str], presentes: set[str]) -> list[str]:
+    """Avisa de los campos del `field_map` que no vienen en el payload.
+
+    Es el modo de fallo del riesgo 1 de la sección 11: una comunidad renombra
+    `ESTADO` y `props.get()` devuelve None en silencio. Como `norm_status(None)`
+    da 'desconocido' —un estado válido— nada más aguas abajo se entera, y la
+    fuente sigue publicándose como `ok` con todas las filas vacías.
+    """
+    ausentes = sorted({src for src in field_map.values() if src and src not in presentes})
+    if ausentes:
+        log.warning(
+            "Fuente %s: campos ausentes en el payload %s. ¿Ha cambiado el formato? "
+            "Campos recibidos: %s",
+            source_id,
+            ausentes,
+            sorted(presentes)[:25],
+        )
+    return ausentes
+
 
 # Vocabulario habitual en portales de emergencias españoles.
 COMMON_STATUS_MAP = {
@@ -77,6 +102,11 @@ class ArcGISSource(OfficialSource):
         feats = raw.get("features", [])
         if not feats:
             return pd.DataFrame()
+
+        presentes: set[str] = set()
+        for f in feats[:50]:
+            presentes |= set((f.get("properties") or f.get("attributes") or {}).keys())
+        warn_missing_fields(self._meta.source_id, self.field_map, presentes)
 
         rows = []
         for f in feats:

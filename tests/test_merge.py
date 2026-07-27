@@ -119,17 +119,6 @@ def test_does_not_match_outside_time_window(now):
 # --- tabla 8.1: dos oficiales a 800 m, un solo cluster ----------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "RF-P-06 exige este test por nombre y hoy falla. sjoin_nearest va de "
-        "oficial -> incendio, así que cada oficial busca su cluster más próximo "
-        "de forma independiente y nada impide que dos elijan el mismo. Resultado: "
-        "dos incendios distintos colapsan en un incidente y uno desaparece del "
-        "mapa. Falta desempate por distancia dentro de cada fire_id. "
-        "Requiere tocar src/incendios/merge.py — pendiente de aprobación."
-    ),
-)
 def test_does_not_merge_neighbours(now):
     """Dos partes de 112 CV a 800 m con un solo cluster FIRMS cerca.
 
@@ -166,11 +155,11 @@ def test_does_not_merge_neighbours(now):
     assert ganador == "CV-A"
 
 
-def test_two_officials_currently_share_one_cluster(now):
-    """Contrapartida del anterior: deja constancia del comportamiento de hoy.
+def test_loser_of_a_contested_cluster_survives_as_orphan(now):
+    """La otra mitad del requisito: el parte que pierde el cluster no se pierde.
 
-    Sin este test, arreglar `merge.py` volvería verde el `xfail` de arriba sin
-    que nadie viese qué cambió exactamente.
+    Es la parte que importa de verdad. Descartar el emparejamiento sin más haría
+    desaparecer el segundo incendio igual que antes, solo que por otra vía.
     """
     official = make_official(
         [
@@ -182,9 +171,14 @@ def test_two_officials_currently_share_one_cluster(now):
     )
     fires = make_fires([{"fire_id": "f1", "latitude": 39.5010, "longitude": -0.5}])
 
-    emparejados, _ = merge.match(official, fires)
+    emparejados, clusters = merge.match(official, fires)
+    incidentes = merge.build_incidents(emparejados, clusters)
 
-    assert int(emparejados["fire_id"].notna().sum()) == 2
+    # Dos incendios entran, dos incidentes salen: uno confirmado por satélite y
+    # otro huérfano oficial. Ninguno desaparece.
+    assert len(incidentes) == 2
+    assert set(incidentes["origin"]) == {"ambos", "oficial"}
+    assert "off_112cv_CV-B" in incidentes["fire_id"].tolist()
 
 
 # --- tabla 8.1: estados discrepantes ----------------------------------------
@@ -211,6 +205,30 @@ def test_worst_status_wins_between_sources(now):
     _, clusters = merge.match(official, fires)
 
     assert clusters["official_status"].iloc[0] == "activo"
+
+
+def test_two_reports_from_the_same_source_do_not_both_confirm(now):
+    """El desempate es por fuente, y este test fija el porqué.
+
+    Dos partes de 112 CV próximos son dos incendios: un servicio no notifica el
+    mismo fuego dos veces. Dos partes de comunidades distintas próximos pueden
+    ser el mismo frente en un límite provincial. La regla tiene que distinguir
+    los dos casos, no aplicar el mismo criterio a ciegas.
+    """
+    misma_fuente = make_official(
+        [
+            {"source_id": "112cv", "external_id": "A", "latitude": 39.5000,
+             "longitude": -0.5, "precision_m": 100.0, "reported_at": now},
+            {"source_id": "112cv", "external_id": "B", "latitude": 39.5072,
+             "longitude": -0.5, "precision_m": 100.0, "reported_at": now},
+        ]
+    )
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5010, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(misma_fuente, fires)
+
+    assert int(emparejados["fire_id"].notna().sum()) == 1
+    assert clusters["confirmed_by"].iloc[0] == "112cv"
 
 
 def test_confirmed_by_lists_every_source(now):

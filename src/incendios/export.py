@@ -14,7 +14,6 @@ import json
 import logging
 import shutil
 import subprocess
-from datetime import datetime, timezone
 
 import geopandas as gpd
 import pandas as pd

@@ -271,29 +271,4 @@ def test_aborts_on_suspicious_emptiness(tmp_outputs, pipeline_data):
         export_mod.export_all(hotspots.iloc[0:0], fires.iloc[0:0], perimeters.iloc[0:0])
 
 
-# --- pendiente: RF-P-14 invariantes de la sección 4.4 ------------------------
-
-INVARIANTES = [
-    "1-id-unico",
-    "2-sin-incidentes-sin-origen",
-    "3-origin-ambos-coherente",
-    "4-first-detected-antes-que-last",
-    "5-geometria-dentro-de-espana",
-    "6-position-precision-positiva",
-    "7-sin-hotspots-implica-oficial",
-    "8-extinguido-no-se-publica",
-]
-
-
-@pytest.mark.parametrize("invariante", INVARIANTES)
-@pytest.mark.skip(
-    reason=(
-        "RF-P-14 sin implementar (sesión 2 de docs/PROMPTS.md): falta "
-        "src/incendios/validate.py. Además build_incidents() todavía no emite "
-        "official_confirmed, position_precision_m, id ni intensity del contrato "
-        "4.3, así que los invariantes no son comprobables sobre la salida real."
-    )
-)
-def test_invariant_violation_aborts_publication(invariante):
-    """Un fichero corrupto por invariante, los 8 deben abortar con exit != 0."""
-    raise AssertionError("pendiente de src/incendios/validate.py")
+# Los ocho invariantes de la sección 4.4 viven en tests/test_invariants.py.

@@ -38,6 +38,40 @@ SCHEMA = [
 
 _CONF_MAP = {"l": 20, "n": 60, "h": 90, "low": 20, "nominal": 60, "high": 90}
 
+# Columnas sin las que no se puede construir un hotspot. El brillo se valida
+# aparte porque VIIRS y MODIS lo publican con nombres distintos.
+REQUIRED_CSV_COLUMNS = (
+    "latitude",
+    "longitude",
+    "acq_date",
+    "acq_time",
+    "satellite",
+    "instrument",
+    "confidence",
+)
+
+
+def _require_columns(df: pd.DataFrame) -> None:
+    """Falla con el sensor, el área y el diff de columnas.
+
+    Un `KeyError: 'latitude'` a las 4 de la mañana en plena temporada no dice
+    qué combinación sensor/bbox rompió ni contra qué esquema. Esto sí.
+    """
+    faltan = [c for c in REQUIRED_CSV_COLUMNS if c not in df.columns]
+    if "bright_ti4" not in df.columns and "brightness" not in df.columns:
+        faltan.append("bright_ti4|brightness")
+
+    if not faltan:
+        return
+
+    origen = df["source"].iloc[0] if "source" in df.columns and len(df) else "?"
+    area = df["area_key"].iloc[0] if "area_key" in df.columns and len(df) else "?"
+    raise ValueError(
+        f"FIRMS {origen}/{area}: el CSV no trae las columnas obligatorias "
+        f"{faltan}. Recibidas: {sorted(df.columns)}. "
+        "¿Ha cambiado el esquema de FIRMS?"
+    )
+
 
 def _url(source: str, area: str) -> str:
     return f"{FIRMS_BASE}/{FIRMS_MAP_KEY}/{source}/{area}/{DAY_RANGE}"
@@ -72,6 +106,8 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=SCHEMA)
 
+    _require_columns(df)
+
     out = pd.DataFrame(index=df.index)
     out["latitude"] = df["latitude"].astype(float)
     out["longitude"] = df["longitude"].astype(float)
@@ -97,12 +133,13 @@ def _normalize(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     # VIIRS: bright_ti4 (canal I4, 3.74 um). MODIS: brightness (canal 21/22).
-    out["brightness_k"] = (
-        df["bright_ti4"] if "bright_ti4" in df.columns else df.get("brightness")
-    ).astype(float)
+    brillo = df["bright_ti4"] if "bright_ti4" in df.columns else df["brightness"]
+    out["brightness_k"] = brillo.astype(float)
 
     out["frp_mw"] = pd.to_numeric(df.get("frp"), errors="coerce").fillna(0.0)
-    out["daynight"] = df.get("daynight", "").astype(str)
+    # `df.get(col, "")` devolvería el str por defecto, no una Serie, y .astype
+    # reventaría. Las columnas opcionales se comprueban contra el índice.
+    out["daynight"] = df["daynight"].astype(str) if "daynight" in df.columns else ""
     out["scan"] = pd.to_numeric(df.get("scan"), errors="coerce")
     out["track"] = pd.to_numeric(df.get("track"), errors="coerce")
 
