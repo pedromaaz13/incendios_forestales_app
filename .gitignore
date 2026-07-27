@@ -6,3 +6,7 @@ data/raw/
 data/out/
 data/history/
 node_modules/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
