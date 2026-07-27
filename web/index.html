@@ -1,363 +1,102 @@
 <!doctype html>
 <html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Focos activos · España</title>
-<meta name="description" content="Detecciones satelitales de anomalías térmicas sobre España a partir de NASA FIRMS.">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Incendios forestales activos en España · mapa en tiempo real</title>
+    <meta
+      name="description"
+      content="Mapa de incendios forestales activos en España. Detecciones satelitales de NASA FIRMS y partes oficiales de los servicios autonómicos, con la antigüedad real del dato siempre visible."
+    />
+    <meta name="color-scheme" content="dark" />
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%A5%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <a class="salto" href="#lista-incidentes">Saltar a la lista de incendios</a>
 
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+    <header class="cabecera">
+      <h1 class="marca">
+        <span class="marca__icono" aria-hidden="true">🔥</span>
+        <span class="marca__texto">Incendios forestales en España</span>
+      </h1>
 
-<style>
-  :root {
-    --ground:  #0f1619;
-    --panel:   rgba(19, 28, 33, 0.88);
-    --line:    #26343b;
-    --ink:     #dce6e9;
-    --muted:   #7d9199;
-    --cool:    #4e8fa8;
+      <!-- RF-F-05. Los dos números, uno al lado del otro. Separarlos
+           visualmente es lo que impide confundirlos. -->
+      <div class="latencia" id="panel-latencia">
+        <div class="latencia__bloque">
+          <span class="latencia__rotulo">Datos satelitales</span>
+          <strong class="latencia__valor" id="latencia-dato" aria-live="polite">—</strong>
+          <span class="latencia__pie" id="latencia-dato-pie">sin datos</span>
+        </div>
+        <div class="latencia__sep" aria-hidden="true"></div>
+        <div class="latencia__bloque">
+          <span class="latencia__rotulo">Actualización</span>
+          <strong class="latencia__valor" id="latencia-pipeline" aria-live="polite">—</strong>
+          <span class="latencia__pie">refresco cada 10 min</span>
+        </div>
+      </div>
+    </header>
 
-    /* Rampa de brasa. Deriva del FRP, no es decoración: cada parada
-       corresponde a un umbral de potencia radiativa. */
-    --e1: #ffe08a;
-    --e2: #ffa23a;
-    --e3: #f05a28;
-    --e4: #c81e1e;
+    <div class="banda" id="banda" role="status" hidden></div>
 
-    --radius: 3px;
-  }
+    <main class="disposicion">
+      <aside class="panel panel--izq" aria-label="Estado de fuentes, resumen y capas">
+        <section class="bloque">
+          <h2 class="bloque__titulo">Estado de fuentes</h2>
+          <ul class="fuentes" id="lista-fuentes"></ul>
+        </section>
+        <section class="bloque">
+          <h2 class="bloque__titulo">Resumen · últimas 24 h</h2>
+          <ul class="resumen" id="resumen"></ul>
+        </section>
+        <section class="bloque">
+          <h2 class="bloque__titulo">Capas</h2>
+          <div class="conmutadores" id="conmutadores"></div>
+        </section>
+        <section class="bloque">
+          <h2 class="bloque__titulo">Mapa base</h2>
+          <div class="segmentado" id="selector-estilo" role="radiogroup" aria-label="Estilo del mapa"></div>
+        </section>
+        <section class="bloque bloque--credito">
+          <h2 class="bloque__titulo">Fuentes</h2>
+          <p class="credito" id="atribucion"></p>
+        </section>
+      </aside>
 
-  * { box-sizing: border-box; }
+      <div class="mapa-envoltorio">
+        <div id="mapa" class="mapa" role="application" aria-label="Mapa de incendios activos"></div>
 
-  html, body {
-    margin: 0; height: 100%;
-    background: var(--ground);
-    color: var(--ink);
-    font-family: Archivo, system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
+        <div class="sin-webgl" id="sin-webgl" hidden>
+          <h2>Este navegador no puede mostrar el mapa</h2>
+          <p>
+            El visor necesita WebGL y este navegador no lo tiene disponible.
+            Suele resolverse actualizando el navegador o activando la
+            aceleración por hardware en sus ajustes.
+          </p>
+          <p class="sin-webgl__112">Ante una emergencia, llama al <strong>112</strong>.</p>
+        </div>
 
-  #map { position: absolute; inset: 0; }
+        <div class="leyenda" id="leyenda" hidden></div>
+      </div>
 
-  .chrome {
-    position: absolute; z-index: 2;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    backdrop-filter: blur(12px);
-  }
+      <aside class="panel panel--der" aria-label="Incendios visibles">
+        <h2 class="bloque__titulo bloque__titulo--fijo">
+          Incendios visibles <span class="contador" id="contador-visibles">0</span>
+        </h2>
+        <ul class="lista" id="lista-incidentes" tabindex="-1"></ul>
+      </aside>
+    </main>
 
-  /* --- Cabecera: la latencia es el dato principal, no el recuento --- */
-  #head {
-    top: 12px; left: 12px;
-    padding: 14px 16px 12px;
-    min-width: 264px; max-width: calc(100vw - 24px);
-  }
-  #head h1 {
-    margin: 0 0 10px;
-    font-size: 13px; font-weight: 700;
-    letter-spacing: .14em; text-transform: uppercase;
-  }
-  #latency {
-    display: flex; align-items: baseline; gap: 8px;
-    padding-bottom: 10px; margin-bottom: 10px;
-    border-bottom: 1px solid var(--line);
-  }
-  #latency .val {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 30px; line-height: 1; font-weight: 500;
-    font-variant-numeric: tabular-nums;
-  }
-  #latency .lab { font-size: 11px; color: var(--muted); line-height: 1.35; }
+    <!-- RF-F-12: permanente, visible sin desplazar, en toda resolución. -->
+    <footer class="aviso-legal">
+      Detecciones satelitales de anomalías térmicas y partes oficiales.
+      <strong>No es información oficial de emergencias.</strong>
+      Ante una emergencia, 112.
+    </footer>
 
-  .stats { display: flex; gap: 20px; }
-  .stat .n {
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums;
-  }
-  .stat .k {
-    font-size: 10px; color: var(--muted);
-    letter-spacing: .1em; text-transform: uppercase;
-  }
+    <div class="ficha" id="ficha" role="dialog" aria-labelledby="ficha-titulo" hidden></div>
 
-  /* --- Leyenda / filtro --- */
-  #legend { bottom: 34px; left: 12px; padding: 11px 13px; }
-  #legend .t {
-    font-size: 10px; color: var(--muted);
-    letter-spacing: .1em; text-transform: uppercase; margin-bottom: 9px;
-  }
-  .ramp { display: flex; gap: 3px; }
-  .ramp button {
-    display: flex; flex-direction: column; gap: 5px;
-    padding: 0; border: 0; background: none; cursor: pointer;
-    font-family: inherit; color: var(--muted); font-size: 10px;
-    opacity: .42; transition: opacity .15s;
-  }
-  .ramp button[aria-pressed="true"] { opacity: 1; color: var(--ink); }
-  .ramp button:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
-  .ramp .sw { width: 46px; height: 5px; border-radius: 1px; }
-
-  /* --- Ficha de incendio --- */
-  #card {
-    top: 12px; right: 12px; width: 296px;
-    max-width: calc(100vw - 24px); padding: 15px 16px;
-    display: none;
-  }
-  #card.on { display: block; }
-  #card h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
-  #card .sub {
-    font-size: 11px; color: var(--muted);
-    letter-spacing: .08em; text-transform: uppercase; margin-bottom: 13px;
-  }
-  #card dl {
-    margin: 0; display: grid; grid-template-columns: 1fr auto;
-    gap: 7px 12px; font-size: 12px;
-  }
-  #card dt { color: var(--muted); }
-  #card dd {
-    margin: 0; text-align: right;
-    font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
-  }
-  #card button.close {
-    position: absolute; top: 10px; right: 10px;
-    width: 24px; height: 24px; padding: 0; cursor: pointer;
-    background: none; border: 1px solid var(--line); border-radius: var(--radius);
-    color: var(--muted); font-size: 14px; line-height: 1;
-  }
-
-  #note {
-    position: absolute; z-index: 2; bottom: 8px; left: 12px; right: 12px;
-    font-size: 10px; color: var(--muted); pointer-events: none;
-  }
-  #note b { color: #a8b8bd; font-weight: 500; }
-
-  .maplibregl-ctrl-attrib { font-size: 10px; }
-
-  @media (max-width: 640px) {
-    #head { min-width: 0; right: 12px; }
-    #card { top: auto; bottom: 92px; left: 12px; right: 12px; width: auto; }
-    #legend { bottom: 34px; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
-  }
-</style>
-</head>
-<body>
-
-<div id="map"></div>
-
-<header id="head" class="chrome">
-  <h1>Focos activos · España</h1>
-  <div id="latency">
-    <span class="val" id="lat-val">—</span>
-    <span class="lab">minutos desde<br>la última pasada</span>
-  </div>
-  <div class="stats">
-    <div class="stat"><div class="n" id="s-fires">—</div><div class="k">Activos</div></div>
-    <div class="stat"><div class="n" id="s-hot">—</div><div class="k">Detecciones</div></div>
-    <div class="stat"><div class="n" id="s-frp">—</div><div class="k">GW radiados</div></div>
-  </div>
-</header>
-
-<div id="legend" class="chrome">
-  <div class="t">Intensidad (FRP acumulado)</div>
-  <div class="ramp" id="ramp"></div>
-</div>
-
-<aside id="card" class="chrome" aria-live="polite">
-  <button class="close" id="card-close" aria-label="Cerrar ficha">×</button>
-  <h2 id="c-place">—</h2>
-  <div class="sub" id="c-status">—</div>
-  <dl id="c-list"></dl>
-</aside>
-
-<p id="note">
-  Anomalías térmicas detectadas por satélite (NASA FIRMS · VIIRS 375 m, MODIS 1 km).
-  <b>No es información oficial de emergencias.</b> Para incidencias en curso, 112.
-</p>
-
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script>
-// Cámbialo por la URL pública de tu bucket R2/S3 al desplegar.
-const DATA = window.DATA_BASE || "../data/out";
-
-const LEVELS = [
-  { key: "baja",    label: "< 50 MW",   color: "var(--e1)", hex: "#ffe08a" },
-  { key: "media",   label: "50–200",    color: "var(--e2)", hex: "#ffa23a" },
-  { key: "alta",    label: "200–800",   color: "var(--e3)", hex: "#f05a28" },
-  { key: "extrema", label: "> 800 MW",  color: "var(--e4)", hex: "#c81e1e" },
-];
-
-const active = new Set(LEVELS.map(l => l.key));
-
-// --- Estado del mapa en la URL --------------------------------------------
-const q = new URLSearchParams(location.search);
-const view = {
-  lon:  parseFloat(q.get("lon"))  || -3.70,
-  lat:  parseFloat(q.get("lat"))  || 40.42,
-  zoom: parseFloat(q.get("zoom")) || 5.6,
-};
-
-const map = new maplibregl.Map({
-  container: "map",
-  style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-  center: [view.lon, view.lat],
-  zoom: view.zoom,
-  maxZoom: 14,
-  attributionControl: { compact: true },
-});
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "bottom-right");
-
-map.on("moveend", () => {
-  const c = map.getCenter();
-  const p = new URLSearchParams({
-    lat: c.lat.toFixed(4), lon: c.lng.toFixed(4), zoom: map.getZoom().toFixed(2),
-  });
-  history.replaceState(null, "", "?" + p);
-});
-
-// --- Capas -----------------------------------------------------------------
-const colorByIntensity = [
-  "match", ["get", "intensity"],
-  "baja", LEVELS[0].hex, "media", LEVELS[1].hex,
-  "alta", LEVELS[2].hex, "extrema", LEVELS[3].hex,
-  "#8fa3a9",
-];
-
-map.on("load", async () => {
-  map.addSource("perimeters", { type: "geojson", data: `${DATA}/perimeters.geojson` });
-  map.addSource("hotspots",   { type: "geojson", data: `${DATA}/hotspots.geojson` });
-  map.addSource("fires",      { type: "geojson", data: `${DATA}/fires.geojson` });
-
-  map.addLayer({
-    id: "perimeter-fill", type: "fill", source: "perimeters", minzoom: 8,
-    paint: { "fill-color": "#f05a28", "fill-opacity": 0.14 },
-  });
-  map.addLayer({
-    id: "perimeter-line", type: "line", source: "perimeters", minzoom: 8,
-    paint: { "line-color": "#f05a28", "line-width": 1, "line-opacity": 0.5 },
-  });
-
-  map.addLayer({
-    id: "hotspot-dots", type: "circle", source: "hotspots", minzoom: 9,
-    paint: {
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.6, 14, 4],
-      "circle-color": "#ffe08a",
-      "circle-opacity": 0.55,
-    },
-  });
-
-  // Halo: sustituye a un heatmap. Da presencia a zoom bajo sin desdibujar
-  // la posición real, que es lo que la gente viene a mirar.
-  map.addLayer({
-    id: "fire-glow", type: "circle", source: "fires",
-    paint: {
-      "circle-radius": [
-        "interpolate", ["linear"], ["zoom"],
-        4,  ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 5,  200, 22],
-        11, ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 14, 200, 70],
-      ],
-      "circle-color": colorByIntensity,
-      "circle-opacity": 0.16,
-      "circle-blur": 0.85,
-    },
-  });
-
-  map.addLayer({
-    id: "fire-core", type: "circle", source: "fires",
-    paint: {
-      "circle-radius": [
-        "interpolate", ["linear"], ["zoom"],
-        4,  ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 2.4, 200, 8],
-        11, ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 6,   200, 20],
-      ],
-      "circle-color": colorByIntensity,
-      "circle-stroke-color": "#0f1619",
-      "circle-stroke-width": 1,
-      "circle-opacity": ["case", ["==", ["get", "status"], "activo"], 0.95, 0.4],
-    },
-  });
-
-  for (const id of ["fire-core", "fire-glow"]) {
-    map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
-    map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
-  }
-  map.on("click", "fire-core", e => showCard(e.features[0].properties));
-
-  await loadManifest();
-  setInterval(loadManifest, 5 * 60 * 1000);
-});
-
-// --- Filtro por intensidad -------------------------------------------------
-function applyFilter() {
-  const f = ["in", ["get", "intensity"], ["literal", [...active]]];
-  ["fire-core", "fire-glow"].forEach(l => map.getLayer(l) && map.setFilter(l, f));
-}
-
-const ramp = document.getElementById("ramp");
-LEVELS.forEach(l => {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.setAttribute("aria-pressed", "true");
-  b.innerHTML = `<span class="sw" style="background:${l.hex}"></span><span>${l.label}</span>`;
-  b.addEventListener("click", () => {
-    const on = b.getAttribute("aria-pressed") === "true";
-    b.setAttribute("aria-pressed", String(!on));
-    on ? active.delete(l.key) : active.add(l.key);
-    applyFilter();
-  });
-  ramp.appendChild(b);
-});
-
-// --- Ficha -----------------------------------------------------------------
-const card = document.getElementById("card");
-document.getElementById("card-close").addEventListener("click", () => card.classList.remove("on"));
-
-const fmt = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 });
-const when = iso => new Date(iso).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-
-function showCard(p) {
-  document.getElementById("c-place").textContent = p.municipio || "Ubicación sin asignar";
-  document.getElementById("c-status").textContent =
-    `${p.status === "activo" ? "Activo" : "Sin detección reciente"} · intensidad ${p.intensity}` +
-    (p.provincia ? ` · ${p.provincia}` : "");
-
-  const rows = [
-    ["Detecciones", fmt.format(p.n_hotspots)],
-    ["FRP acumulado", `${fmt.format(p.frp_total_mw)} MW`],
-    ["Superficie estimada", `${fmt.format(p.area_est_ha)} ha`],
-    ["Primera detección", when(p.first_detected)],
-    ["Última detección", when(p.last_detected)],
-    ["Sin actividad desde", `${Number(p.hours_since_last).toFixed(1)} h`],
-  ];
-  document.getElementById("c-list").innerHTML =
-    rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
-  card.classList.add("on");
-}
-
-// --- Manifiesto: latencia y totales ---------------------------------------
-async function loadManifest() {
-  try {
-    const r = await fetch(`${DATA}/manifest.json`, { cache: "no-store" });
-    if (!r.ok) throw new Error(r.status);
-    const m = await r.json();
-
-    document.getElementById("lat-val").textContent = m.data_age_minutes ?? "—";
-    document.getElementById("s-fires").textContent = fmt.format(m.fires_active);
-    document.getElementById("s-hot").textContent   = fmt.format(m.hotspots);
-    document.getElementById("s-frp").textContent   = (m.frp_total_mw / 1000).toFixed(1);
-  } catch (err) {
-    // Un fallo del manifiesto no debe romper el mapa: el dato que falta es el
-    // de latencia, así que se marca como desconocido en lugar de mentir con 0.
-    document.getElementById("lat-val").textContent = "?";
-    console.warn("manifest no disponible:", err);
-  }
-}
-</script>
-</body>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

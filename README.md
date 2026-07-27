@@ -8,10 +8,68 @@ Pipeline serverless, sin base de datos, coste de infraestructura ~0 €.
 
 ---
 
+## Cómo arrancarlo
+
+### Pipeline
+
+```bash
+pip install -r requirements.txt
+pytest --cov                                    # 232 pruebas, cobertura ≥ 85 %
+PYTHONPATH=src python scripts/smoke_test.py     # prueba de humo sin red
+```
+
+Para correr contra datos reales hace falta `FIRMS_MAP_KEY` (gratis, registro por
+correo en <https://firms.modaps.eosdis.nasa.gov/api/map_key/>):
+
+```bash
+export FIRMS_MAP_KEY=...
+PYTHONPATH=src python -m incendios.pipeline -v
+```
+
+### Frontend
+
+```bash
+PYTHONPATH=src python scripts/build_demo_data.py   # genera web/public/live/
+cd web && npm install && npm run dev
+```
+
+`build_demo_data.py` produce artefactos sintéticos con el contrato exacto de las
+secciones 4.1–4.3, para que el visor se pueda mirar sin claves ni red. Van
+marcados con `demo: true` en el manifiesto y el frontend pinta una banda azul
+permanente: un juego de demostración indistinguible de la producción sería justo
+el engaño que este proyecto existe para no cometer.
+
+## Estado
+
+| Módulo | Estado |
+|---|---|
+| `firms.py` · ingesta NASA FIRMS | Completo, probado |
+| `clean.py` · filtros y máscara industrial | Completo, probado |
+| `cluster.py` · ST-DBSCAN y perímetros | Completo, probado |
+| `merge.py` · fusión oficial ↔ satélite | Completo, probado |
+| `validate.py` · 8 invariantes (RF-P-14) | Completo, probado |
+| `health.py` · `sources.json` (RF-P-10) | Completo, probado |
+| `publish.py` · atomicidad y vaciado (RF-P-11) | Completo, probado |
+| `build.py` · manifiesto y contrato web | Completo, probado |
+| `wind.py` · viento Open-Meteo (RF-P-09) | Completo, probado |
+| `enrich.py` · geocoding inverso | Completo, falta la capa del IGN |
+| `export.py` · GeoJSON, PMTiles, Parquet | Completo, probado |
+| `web/` · frontend v1 (hito 2) | Completo: RF-F-01…07, 10…13 |
+| `sources/` · adaptadores oficiales | Framework probado, **endpoints sin descubrir** |
+| SEVIRI, EFFIS, SEO, alertas | Sin empezar |
+
+**Lo único que bloquea la puesta en producción con datos reales** son los cinco
+endpoints autonómicos de RF-P-03. No se inventan: el procedimiento para
+descubrirlos está en `docs/descubrimiento-fuentes.md`. Mientras tanto salen como
+`disabled` en el panel de estado, que es honesto, en lugar de como "0 incendios",
+que no lo sería.
+
+---
+
 ## Arquitectura
 
 ```
-┌─ GitHub Actions (cron */15) ──────────────────────────────────┐
+┌─ GitHub Actions (cron */10) ──────────────────────────────────┐
 │                                                               │
 │  firms.py    4 sensores × 3 bboxes en paralelo → CSV          │
 │      ↓       normalización de esquema VIIRS/MODIS             │

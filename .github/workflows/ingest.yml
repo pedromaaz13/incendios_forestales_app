@@ -2,9 +2,10 @@ name: ingest
 
 on:
   schedule:
-    # Cada 15 min. FIRMS NRT se refresca cada ~3 h, pero las pasadas no están
-    # alineadas y una cadencia corta reduce el peor caso de latencia percibida.
-    - cron: "*/15 * * * *"
+    # Cada 10 min (RF-P-11). FIRMS NRT se refresca cada ~3 h, pero las pasadas
+    # no están alineadas y una cadencia corta reduce el peor caso de latencia
+    # percibida. SEVIRI, cuando entre, publica cada 15 min.
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -47,29 +48,89 @@ jobs:
             --endpoint-url "https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
             --only-show-errors || echo "sin histórico previo"
 
+      # El pipeline valida los 8 invariantes (RF-P-14) y aborta con código != 0
+      # si alguno falla o si el recuento se desploma respecto a las ejecuciones
+      # anteriores. En cualquiera de los dos casos los pasos de publicación no
+      # llegan a ejecutarse y el frontend conserva la ejecución previa con su
+      # edad real, que crecerá a la vista.
       - name: Ejecutar pipeline
         env:
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
           PYTHONPATH: src
         run: python -m incendios.pipeline -v
 
-      - name: Publicar salidas
+      # RF-P-11 · publicación atómica. El orden es obligatorio, y por eso son
+      # tres pasos y no un `sync` del directorio entero: primero los datos
+      # pesados, luego el estado de fuentes, y `manifest.json` el último. El
+      # frontend da por buena la ejecución anterior mientras el manifiesto no
+      # cambie, así que un manifiesto nuevo apuntando a datos que todavía no
+      # están sería lo único peor que no publicar nada.
+      - name: Publicar datos
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
           ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
         run: |
-          # TTL corto en los artefactos vivos, largo en el histórico inmutable.
           aws s3 sync data/out "s3://${{ vars.R2_BUCKET }}/live" \
             --endpoint-url "$ENDPOINT" \
             --cache-control "public, max-age=120, stale-while-revalidate=600" \
-            --delete --only-show-errors
+            --exclude "manifest.json" --exclude "sources.json" \
+            --only-show-errors
 
+      - name: Publicar estado de fuentes
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          aws s3 cp data/out/sources.json "s3://${{ vars.R2_BUCKET }}/live/sources.json" \
+            --endpoint-url "$ENDPOINT" \
+            --cache-control "public, max-age=120, stale-while-revalidate=600" \
+            --only-show-errors
+
+      - name: Publicar manifiesto
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          aws s3 cp data/out/manifest.json "s3://${{ vars.R2_BUCKET }}/live/manifest.json" \
+            --endpoint-url "$ENDPOINT" \
+            --cache-control "public, max-age=60" \
+            --only-show-errors
+
+      - name: Publicar histórico
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
           aws s3 sync data/history "s3://${{ vars.R2_BUCKET }}/history" \
             --endpoint-url "$ENDPOINT" \
             --cache-control "public, max-age=31536000, immutable" \
             --only-show-errors
+
+      # Hito 1 · alerta si el dato más viejo pasa de 4 h. Falla el job a
+      # propósito para que salte la notificación: un mapa con datos de hace
+      # cinco horas es un mapa con el que no se puede decidir nada, y que nadie
+      # se entere es peor que la propia latencia.
+      - name: Alertar por latencia excesiva
+        if: always()
+        run: |
+          if [ ! -f data/out/manifest.json ]; then
+            echo "::warning::sin manifiesto: la ejecución no llegó a publicar"
+            exit 0
+          fi
+          PEOR=$(python -c "import json;print(json.load(open('data/out/manifest.json')).get('worst_data_age_seconds') or 0)")
+          echo "worst_data_age_seconds=$PEOR"
+          if [ "$PEOR" -gt 14400 ]; then
+            echo "::error::El dato más antiguo tiene $((PEOR/60)) min (umbral 240 min)"
+            exit 1
+          fi
 
       - name: Resumen
         if: always()
