@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Focos activos · España</title>
+<meta name="description" content="Detecciones satelitales de anomalías térmicas sobre España a partir de NASA FIRMS.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+
+<style>
+  :root {
+    --ground:  #0f1619;
+    --panel:   rgba(19, 28, 33, 0.88);
+    --line:    #26343b;
+    --ink:     #dce6e9;
+    --muted:   #7d9199;
+    --cool:    #4e8fa8;
+
+    /* Rampa de brasa. Deriva del FRP, no es decoración: cada parada
+       corresponde a un umbral de potencia radiativa. */
+    --e1: #ffe08a;
+    --e2: #ffa23a;
+    --e3: #f05a28;
+    --e4: #c81e1e;
+
+    --radius: 3px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Archivo, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #map { position: absolute; inset: 0; }
+
+  .chrome {
+    position: absolute; z-index: 2;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    backdrop-filter: blur(12px);
+  }
+
+  /* --- Cabecera: la latencia es el dato principal, no el recuento --- */
+  #head {
+    top: 12px; left: 12px;
+    padding: 14px 16px 12px;
+    min-width: 264px; max-width: calc(100vw - 24px);
+  }
+  #head h1 {
+    margin: 0 0 10px;
+    font-size: 13px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase;
+  }
+  #latency {
+    display: flex; align-items: baseline; gap: 8px;
+    padding-bottom: 10px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  #latency .val {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 30px; line-height: 1; font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  #latency .lab { font-size: 11px; color: var(--muted); line-height: 1.35; }
+
+  .stats { display: flex; gap: 20px; }
+  .stat .n {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums;
+  }
+  .stat .k {
+    font-size: 10px; color: var(--muted);
+    letter-spacing: .1em; text-transform: uppercase;
+  }
+
+  /* --- Leyenda / filtro --- */
+  #legend { bottom: 34px; left: 12px; padding: 11px 13px; }
+  #legend .t {
+    font-size: 10px; color: var(--muted);
+    letter-spacing: .1em; text-transform: uppercase; margin-bottom: 9px;
+  }
+  .ramp { display: flex; gap: 3px; }
+  .ramp button {
+    display: flex; flex-direction: column; gap: 5px;
+    padding: 0; border: 0; background: none; cursor: pointer;
+    font-family: inherit; color: var(--muted); font-size: 10px;
+    opacity: .42; transition: opacity .15s;
+  }
+  .ramp button[aria-pressed="true"] { opacity: 1; color: var(--ink); }
+  .ramp button:focus-visible { outline: 2px solid var(--cool); outline-offset: 3px; }
+  .ramp .sw { width: 46px; height: 5px; border-radius: 1px; }
+
+  /* --- Ficha de incendio --- */
+  #card {
+    top: 12px; right: 12px; width: 296px;
+    max-width: calc(100vw - 24px); padding: 15px 16px;
+    display: none;
+  }
+  #card.on { display: block; }
+  #card h2 { margin: 0 0 2px; font-size: 16px; font-weight: 600; }
+  #card .sub {
+    font-size: 11px; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase; margin-bottom: 13px;
+  }
+  #card dl {
+    margin: 0; display: grid; grid-template-columns: 1fr auto;
+    gap: 7px 12px; font-size: 12px;
+  }
+  #card dt { color: var(--muted); }
+  #card dd {
+    margin: 0; text-align: right;
+    font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums;
+  }
+  #card button.close {
+    position: absolute; top: 10px; right: 10px;
+    width: 24px; height: 24px; padding: 0; cursor: pointer;
+    background: none; border: 1px solid var(--line); border-radius: var(--radius);
+    color: var(--muted); font-size: 14px; line-height: 1;
+  }
+
+  #note {
+    position: absolute; z-index: 2; bottom: 8px; left: 12px; right: 12px;
+    font-size: 10px; color: var(--muted); pointer-events: none;
+  }
+  #note b { color: #a8b8bd; font-weight: 500; }
+
+  .maplibregl-ctrl-attrib { font-size: 10px; }
+
+  @media (max-width: 640px) {
+    #head { min-width: 0; right: 12px; }
+    #card { top: auto; bottom: 92px; left: 12px; right: 12px; width: auto; }
+    #legend { bottom: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<header id="head" class="chrome">
+  <h1>Focos activos · España</h1>
+  <div id="latency">
+    <span class="val" id="lat-val">—</span>
+    <span class="lab">minutos desde<br>la última pasada</span>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n" id="s-fires">—</div><div class="k">Activos</div></div>
+    <div class="stat"><div class="n" id="s-hot">—</div><div class="k">Detecciones</div></div>
+    <div class="stat"><div class="n" id="s-frp">—</div><div class="k">GW radiados</div></div>
+  </div>
+</header>
+
+<div id="legend" class="chrome">
+  <div class="t">Intensidad (FRP acumulado)</div>
+  <div class="ramp" id="ramp"></div>
+</div>
+
+<aside id="card" class="chrome" aria-live="polite">
+  <button class="close" id="card-close" aria-label="Cerrar ficha">×</button>
+  <h2 id="c-place">—</h2>
+  <div class="sub" id="c-status">—</div>
+  <dl id="c-list"></dl>
+</aside>
+
+<p id="note">
+  Anomalías térmicas detectadas por satélite (NASA FIRMS · VIIRS 375 m, MODIS 1 km).
+  <b>No es información oficial de emergencias.</b> Para incidencias en curso, 112.
+</p>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// Cámbialo por la URL pública de tu bucket R2/S3 al desplegar.
+const DATA = window.DATA_BASE || "../data/out";
+
+const LEVELS = [
+  { key: "baja",    label: "< 50 MW",   color: "var(--e1)", hex: "#ffe08a" },
+  { key: "media",   label: "50–200",    color: "var(--e2)", hex: "#ffa23a" },
+  { key: "alta",    label: "200–800",   color: "var(--e3)", hex: "#f05a28" },
+  { key: "extrema", label: "> 800 MW",  color: "var(--e4)", hex: "#c81e1e" },
+];
+
+const active = new Set(LEVELS.map(l => l.key));
+
+// --- Estado del mapa en la URL --------------------------------------------
+const q = new URLSearchParams(location.search);
+const view = {
+  lon:  parseFloat(q.get("lon"))  || -3.70,
+  lat:  parseFloat(q.get("lat"))  || 40.42,
+  zoom: parseFloat(q.get("zoom")) || 5.6,
+};
+
+const map = new maplibregl.Map({
+  container: "map",
+  style: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  center: [view.lon, view.lat],
+  zoom: view.zoom,
+  maxZoom: 14,
+  attributionControl: { compact: true },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), "bottom-right");
+
+map.on("moveend", () => {
+  const c = map.getCenter();
+  const p = new URLSearchParams({
+    lat: c.lat.toFixed(4), lon: c.lng.toFixed(4), zoom: map.getZoom().toFixed(2),
+  });
+  history.replaceState(null, "", "?" + p);
+});
+
+// --- Capas -----------------------------------------------------------------
+const colorByIntensity = [
+  "match", ["get", "intensity"],
+  "baja", LEVELS[0].hex, "media", LEVELS[1].hex,
+  "alta", LEVELS[2].hex, "extrema", LEVELS[3].hex,
+  "#8fa3a9",
+];
+
+map.on("load", async () => {
+  map.addSource("perimeters", { type: "geojson", data: `${DATA}/perimeters.geojson` });
+  map.addSource("hotspots",   { type: "geojson", data: `${DATA}/hotspots.geojson` });
+  map.addSource("fires",      { type: "geojson", data: `${DATA}/fires.geojson` });
+
+  map.addLayer({
+    id: "perimeter-fill", type: "fill", source: "perimeters", minzoom: 8,
+    paint: { "fill-color": "#f05a28", "fill-opacity": 0.14 },
+  });
+  map.addLayer({
+    id: "perimeter-line", type: "line", source: "perimeters", minzoom: 8,
+    paint: { "line-color": "#f05a28", "line-width": 1, "line-opacity": 0.5 },
+  });
+
+  map.addLayer({
+    id: "hotspot-dots", type: "circle", source: "hotspots", minzoom: 9,
+    paint: {
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 1.6, 14, 4],
+      "circle-color": "#ffe08a",
+      "circle-opacity": 0.55,
+    },
+  });
+
+  // Halo: sustituye a un heatmap. Da presencia a zoom bajo sin desdibujar
+  // la posición real, que es lo que la gente viene a mirar.
+  map.addLayer({
+    id: "fire-glow", type: "circle", source: "fires",
+    paint: {
+      "circle-radius": [
+        "interpolate", ["linear"], ["zoom"],
+        4,  ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 5,  200, 22],
+        11, ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 14, 200, 70],
+      ],
+      "circle-color": colorByIntensity,
+      "circle-opacity": 0.16,
+      "circle-blur": 0.85,
+    },
+  });
+
+  map.addLayer({
+    id: "fire-core", type: "circle", source: "fires",
+    paint: {
+      "circle-radius": [
+        "interpolate", ["linear"], ["zoom"],
+        4,  ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 2.4, 200, 8],
+        11, ["interpolate", ["linear"], ["get", "n_hotspots"], 1, 6,   200, 20],
+      ],
+      "circle-color": colorByIntensity,
+      "circle-stroke-color": "#0f1619",
+      "circle-stroke-width": 1,
+      "circle-opacity": ["case", ["==", ["get", "status"], "activo"], 0.95, 0.4],
+    },
+  });
+
+  for (const id of ["fire-core", "fire-glow"]) {
+    map.on("mouseenter", id, () => (map.getCanvas().style.cursor = "pointer"));
+    map.on("mouseleave", id, () => (map.getCanvas().style.cursor = ""));
+  }
+  map.on("click", "fire-core", e => showCard(e.features[0].properties));
+
+  await loadManifest();
+  setInterval(loadManifest, 5 * 60 * 1000);
+});
+
+// --- Filtro por intensidad -------------------------------------------------
+function applyFilter() {
+  const f = ["in", ["get", "intensity"], ["literal", [...active]]];
+  ["fire-core", "fire-glow"].forEach(l => map.getLayer(l) && map.setFilter(l, f));
+}
+
+const ramp = document.getElementById("ramp");
+LEVELS.forEach(l => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.setAttribute("aria-pressed", "true");
+  b.innerHTML = `<span class="sw" style="background:${l.hex}"></span><span>${l.label}</span>`;
+  b.addEventListener("click", () => {
+    const on = b.getAttribute("aria-pressed") === "true";
+    b.setAttribute("aria-pressed", String(!on));
+    on ? active.delete(l.key) : active.add(l.key);
+    applyFilter();
+  });
+  ramp.appendChild(b);
+});
+
+// --- Ficha -----------------------------------------------------------------
+const card = document.getElementById("card");
+document.getElementById("card-close").addEventListener("click", () => card.classList.remove("on"));
+
+const fmt = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 0 });
+const when = iso => new Date(iso).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function showCard(p) {
+  document.getElementById("c-place").textContent = p.municipio || "Ubicación sin asignar";
+  document.getElementById("c-status").textContent =
+    `${p.status === "activo" ? "Activo" : "Sin detección reciente"} · intensidad ${p.intensity}` +
+    (p.provincia ? ` · ${p.provincia}` : "");
+
+  const rows = [
+    ["Detecciones", fmt.format(p.n_hotspots)],
+    ["FRP acumulado", `${fmt.format(p.frp_total_mw)} MW`],
+    ["Superficie estimada", `${fmt.format(p.area_est_ha)} ha`],
+    ["Primera detección", when(p.first_detected)],
+    ["Última detección", when(p.last_detected)],
+    ["Sin actividad desde", `${Number(p.hours_since_last).toFixed(1)} h`],
+  ];
+  document.getElementById("c-list").innerHTML =
+    rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+  card.classList.add("on");
+}
+
+// --- Manifiesto: latencia y totales ---------------------------------------
+async function loadManifest() {
+  try {
+    const r = await fetch(`${DATA}/manifest.json`, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const m = await r.json();
+
+    document.getElementById("lat-val").textContent = m.data_age_minutes ?? "—";
+    document.getElementById("s-fires").textContent = fmt.format(m.fires_active);
+    document.getElementById("s-hot").textContent   = fmt.format(m.hotspots);
+    document.getElementById("s-frp").textContent   = (m.frp_total_mw / 1000).toFixed(1);
+  } catch (err) {
+    // Un fallo del manifiesto no debe romper el mapa: el dato que falta es el
+    // de latencia, así que se marca como desconocido en lugar de mentir con 0.
+    document.getElementById("lat-val").textContent = "?";
+    console.warn("manifest no disponible:", err);
+  }
+}
+</script>
+</body>
+</html>

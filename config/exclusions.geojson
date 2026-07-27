@@ -1,0 +1,17 @@
+{
+  "type": "FeatureCollection",
+  "_comment": "Semilla de focos térmicos industriales persistentes. Coordenadas aproximadas: VERIFICAR contra ortofoto del PNOA antes de producción. Ampliar de forma empírica con scripts/build_exclusions.py.",
+  "features": [
+    { "type": "Feature", "properties": { "name": "Refinería CEPSA San Roque", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [-5.383, 36.191] } },
+    { "type": "Feature", "properties": { "name": "Refinería CEPSA La Rábida", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [-6.918, 37.194] } },
+    { "type": "Feature", "properties": { "name": "Refinería Repsol Cartagena", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [-0.963, 37.578] } },
+    { "type": "Feature", "properties": { "name": "Refinería Repsol Puertollano", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [-4.092, 38.703] } },
+    { "type": "Feature", "properties": { "name": "Refinería Repsol Tarragona", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [1.201, 41.180] } },
+    { "type": "Feature", "properties": { "name": "Refinería Repsol A Coruña", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [-8.419, 43.341] } },
+    { "type": "Feature", "properties": { "name": "Refinería Petronor Muskiz", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [-3.091, 43.339] } },
+    { "type": "Feature", "properties": { "name": "Refinería Castellón", "kind": "refineria" }, "geometry": { "type": "Point", "coordinates": [0.019, 39.983] } },
+    { "type": "Feature", "properties": { "name": "Central térmica As Pontes", "kind": "termica" }, "geometry": { "type": "Point", "coordinates": [-7.853, 43.443] } },
+    { "type": "Feature", "properties": { "name": "Complejo Valdemingómez", "kind": "residuos" }, "geometry": { "type": "Point", "coordinates": [-3.601, 40.339] } },
+    { "type": "Feature", "properties": { "name": "Zabalgarbi Bilbao", "kind": "residuos" }, "geometry": { "type": "Point", "coordinates": [-2.983, 43.253] } }
+  ]
+}

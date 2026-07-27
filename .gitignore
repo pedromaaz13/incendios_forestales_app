@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+data/raw/
+data/out/
+data/history/
+node_modules/

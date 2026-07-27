@@ -1,0 +1,84 @@
+name: ingest
+
+on:
+  schedule:
+    # Cada 15 min. FIRMS NRT se refresca cada ~3 h, pero las pasadas no están
+    # alineadas y una cadencia corta reduce el peor caso de latencia percibida.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar tippecanoe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends tippecanoe
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      # El histórico vive en el bucket, no en git. Se descarga antes de correr
+      # para que el append sea incremental y no se pierda entre ejecuciones.
+      - name: Restaurar histórico
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          aws s3 sync "s3://${{ vars.R2_BUCKET }}/history" data/history \
+            --endpoint-url "https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
+            --only-show-errors || echo "sin histórico previo"
+
+      - name: Ejecutar pipeline
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          PYTHONPATH: src
+        run: python -m incendios.pipeline -v
+
+      - name: Publicar salidas
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          ENDPOINT: https://${{ vars.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+        run: |
+          # TTL corto en los artefactos vivos, largo en el histórico inmutable.
+          aws s3 sync data/out "s3://${{ vars.R2_BUCKET }}/live" \
+            --endpoint-url "$ENDPOINT" \
+            --cache-control "public, max-age=120, stale-while-revalidate=600" \
+            --delete --only-show-errors
+
+          aws s3 sync data/history "s3://${{ vars.R2_BUCKET }}/history" \
+            --endpoint-url "$ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --only-show-errors
+
+      - name: Resumen
+        if: always()
+        run: |
+          if [ -f data/out/manifest.json ]; then
+            {
+              echo '### Ejecución'
+              echo '```json'
+              cat data/out/manifest.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
