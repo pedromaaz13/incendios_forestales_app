@@ -64,7 +64,7 @@ el engaño que este proyecto existe para no cometer.
 | `publish.py` · atomicidad y vaciado (RF-P-11) | Completo, probado |
 | `build.py` · manifiesto y contrato web | Completo, probado |
 | `wind.py` · viento Open-Meteo (RF-P-09) | Completo, probado |
-| `enrich.py` · geocoding inverso | Completo, falta la capa del IGN |
+| `enrich.py` · geocoding inverso | Completo · `scripts/preparar_municipios.py` valida y prepara la capa |
 | `export.py` · GeoJSON, PMTiles, Parquet | Completo, probado |
 | `web/` · frontend v1 (hito 2) | Completo: RF-F-01…07, 10…13 |
 | `sources/` · adaptadores oficiales | Framework probado, **endpoints sin descubrir** |

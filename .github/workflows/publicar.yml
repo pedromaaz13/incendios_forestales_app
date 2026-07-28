@@ -55,6 +55,46 @@ jobs:
           pip install -q -r requirements.txt
           cd web && npm ci
 
+      # RF-P-07 · la capa municipal pone nombre a cada incendio. Sin ella el
+      # visor publica "Ubicación por determinar" en todos, que es correcto pero
+      # inútil. Se cachea porque son decenas de MB y el cron corre cada 30 min.
+      - name: Restaurar capa municipal
+        id: cache_municipios
+        uses: actions/cache@v4
+        with:
+          path: config/municipios.geojson
+          key: municipios-v1
+
+      # `continue-on-error`: sin nombres de municipio el pipeline funciona
+      # igual. Bloquear la publicación de 79 incendios porque no responde un
+      # servicio de cartografía sería desproporcionado.
+      - name: Preparar capa municipal
+        if: steps.cache_municipios.outputs.cache-hit != 'true'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: python scripts/preparar_municipios.py --candidatas
+
+      - name: Estado de la capa municipal
+        if: always()
+        run: |
+          if [ -f config/municipios.geojson ]; then
+            echo "✅ Capa municipal disponible ($(du -h config/municipios.geojson | cut -f1))"
+          else
+            echo "::warning::Sin capa municipal: los incidentes saldrán sin nombre de municipio."
+            {
+              echo "### ℹ️ Sin capa municipal"
+              echo
+              echo "Los incendios se publican sin nombre de municipio. No es un fallo:"
+              echo "la capa del IGN no está disponible por descarga directa."
+              echo
+              echo "Para añadirla: descárgala del Centro de Descargas del CNIG"
+              echo "(serie *Líneas límite municipales*) y ejecuta"
+              echo '`python scripts/preparar_municipios.py --fichero descarga.gpkg`,'
+              echo "luego commitea \`config/municipios.geojson\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Si la clave falta o está agotada, se publica la demo en lugar de un
       # mapa vacío. Un visor que dice "0 incendios" cuando lo que pasa es que no
       # hay clave es exactamente el fallo que este proyecto evita.
