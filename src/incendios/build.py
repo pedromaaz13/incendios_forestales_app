@@ -87,6 +87,7 @@ def build_manifest(
     suppressed_industrial: int = 0,
     suppressed_lowconf: int = 0,
     deduplicated: int = 0,
+    outside_spain: int = 0,
     pipeline_started_at: datetime | None = None,
     degraded: bool = False,
     degraded_reason: str | None = None,
@@ -138,6 +139,10 @@ def build_manifest(
             # duplicados entre pasadas de NOAA-20 y NOAA-21 se contaban como
             # supresiones de la máscara industrial.
             "hotspots_deduplicated": int(deduplicated),
+            # Los bbox de FIRMS son rectángulos y cubren Portugal, el sur de
+            # Francia y el norte de África. Publicar el recorte deja claro que
+            # el recuento es de España y no del rectángulo.
+            "hotspots_outside_spain": int(outside_spain),
         },
         "frp_total_mw": round(frp, 1),
         "degraded": bool(degraded),

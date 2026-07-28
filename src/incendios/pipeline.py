@@ -94,12 +94,18 @@ def run(
     tras_exclusiones = clean_mod.apply_exclusions(tras_confianza)
     hotspots = clean_mod.deduplicate_spatial(tras_exclusiones)
 
+    # Recorte a España. Va después de limpiar y antes de agrupar: así los
+    # recuentos del manifiesto son de España y el clustering no une un foco de
+    # Zamora con otro de Braganza en el mismo incendio.
+    hotspots, fuera_de_espana = enrich_mod.clip_to_spain(hotspots)
+
     suprimidos_baja = len(gdf) - len(tras_confianza)
     suprimidos_industrial = len(tras_confianza) - len(tras_exclusiones)
     duplicados = len(tras_exclusiones) - len(hotspots)
     log.info(
-        "Descartes: %d baja confianza · %d máscara industrial · %d duplicados",
-        suprimidos_baja, suprimidos_industrial, duplicados,
+        "Descartes: %d baja confianza · %d máscara industrial · %d duplicados "
+        "· %d fuera de España",
+        suprimidos_baja, suprimidos_industrial, duplicados, fuera_de_espana,
     )
 
     if hotspots.empty:
@@ -135,6 +141,7 @@ def run(
         suppressed_industrial=suprimidos_industrial,
         suppressed_lowconf=suprimidos_baja,
         deduplicated=duplicados,
+        outside_spain=fuera_de_espana,
         pipeline_started_at=inicio,
         now=datetime.now(UTC),
     )
