@@ -112,3 +112,14 @@ export type ColeccionIncidentes = GeoJSON.FeatureCollection<
   GeoJSON.Point,
   PropiedadesIncidente
 >;
+
+export interface PropiedadesAire {
+  name: string;
+  /** Índice europeo de calidad del aire. No es un porcentaje: 0 a >100. */
+  aqi: number;
+  nivel: string;
+  pm2_5: number | null;
+  pm10: number | null;
+  co: number | null;
+  observed_at: string | null;
+}
