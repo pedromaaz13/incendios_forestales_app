@@ -86,6 +86,7 @@ def build_manifest(
     official: pd.DataFrame | None = None,
     suppressed_industrial: int = 0,
     suppressed_lowconf: int = 0,
+    deduplicated: int = 0,
     pipeline_started_at: datetime | None = None,
     degraded: bool = False,
     degraded_reason: str | None = None,
@@ -133,6 +134,10 @@ def build_manifest(
             "hotspots_24h": int(len(hotspots)),
             "hotspots_suppressed_industrial": int(suppressed_industrial),
             "hotspots_suppressed_lowconf": int(suppressed_lowconf),
+            # Fuera del ejemplo de 4.1, pero necesario: sin separarlo, los
+            # duplicados entre pasadas de NOAA-20 y NOAA-21 se contaban como
+            # supresiones de la máscara industrial.
+            "hotspots_deduplicated": int(deduplicated),
         },
         "frp_total_mw": round(frp, 1),
         "degraded": bool(degraded),

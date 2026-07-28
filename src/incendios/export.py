@@ -24,7 +24,18 @@ log = logging.getLogger(__name__)
 
 # Campos que viajan al navegador. Todo lo demás se queda en el Parquet: cada
 # propiedad extra multiplica por el número de features en el GeoJSON.
-HOTSPOT_WEB_FIELDS = ["acq_dt", "frp_mw", "confidence_pct", "fire_id", "daynight"]
+# `instrument` viaja aunque cueste bytes: sin él el filtro de sensor de RF-F-09
+# no puede distinguir VIIRS de MODIS y falla en silencio —apagar MODIS no hace
+# nada y apagar VIIRS lo oculta todo—, y el manifiesto no puede publicar la
+# antigüedad por familia de sensor, que es media razón de ser de este proyecto.
+HOTSPOT_WEB_FIELDS = [
+    "acq_dt",
+    "frp_mw",
+    "confidence_pct",
+    "fire_id",
+    "daynight",
+    "instrument",
+]
 FIRE_WEB_FIELDS = [
     "fire_id",
     "status",

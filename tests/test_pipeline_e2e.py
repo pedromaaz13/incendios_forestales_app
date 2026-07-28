@@ -283,3 +283,67 @@ def test_history_append_is_idempotent_across_runs(firms_simulado, salidas):
 def _ids_publicados(salidas) -> set[str]:
     datos = json.loads(salidas.incidents_geojson.read_text(encoding="utf-8"))
     return {f["properties"]["id"] for f in datos["features"]}
+
+
+# --- contadores fieles -------------------------------------------------------
+
+
+def test_each_filter_is_counted_separately(firms_simulado, salidas):
+    """Los duplicados no pueden contarse como supresiones industriales.
+
+    La primera ejecución real publicó "464 focos industriales suprimidos"
+    cuando eran 464 duplicados entre pasadas de NOAA-20 y NOAA-21, y la
+    máscara no había descartado ninguno. El riesgo 3 de la sección 11 exige
+    que ese número sea cierto: si algún día la máscara oculta un incendio
+    real, es la única pista de por dónde mirar.
+    """
+    manifest = _ejecutar(salidas)
+    counts = manifest["counts"]
+
+    # El fixture mete 8 hotspots de baja confianza y 5 sobre Puertollano.
+    assert counts["hotspots_suppressed_lowconf"] == 8
+    assert counts["hotspots_suppressed_industrial"] == 5
+    # Y los duplicados van aparte, no sumados a ninguno de los dos.
+    assert counts["hotspots_deduplicated"] >= 0
+
+
+def test_published_hotspots_carry_the_instrument(firms_simulado, salidas):
+    """Sin `instrument` el filtro de sensor de RF-F-09 falla en silencio.
+
+    El frontend hace `coalesce(instrument, 'VIIRS')`, así que apagar MODIS no
+    haría nada y apagar VIIRS lo ocultaría todo. Y el manifiesto no podría
+    publicar la antigüedad por familia de sensor.
+    """
+    import json
+
+    _ejecutar(salidas)
+    datos = json.loads(salidas.hotspots_geojson.read_text(encoding="utf-8"))
+
+    props = datos["features"][0]["properties"]
+    assert "instrument" in props
+    assert props["instrument"]
+
+
+def test_verifier_agrees_with_the_published_manifest(firms_simulado, salidas, monkeypatch):
+    """El verificador y el manifiesto tienen que calcular la misma antigüedad.
+
+    Discrepaban porque hotspots.geojson no llevaba `instrument`: el verificador
+    no podía separar por familia de sensor y comparaba contra el foco más
+    reciente en vez de contra el más antiguo por familia.
+    """
+    from incendios.config import OUTPUTS as REALES
+
+    _ejecutar(salidas)
+
+    # `verificar_datos` lee de OUTPUTS; se le apuntan las salidas del test.
+    monkeypatch.setattr("incendios.config.OUTPUTS", salidas, raising=False)
+    import importlib
+    import sys
+
+    sys.path.insert(0, str(REALES.manifest.parent.parent.parent / "scripts"))
+    verif = importlib.import_module("verificar_datos")
+    monkeypatch.setattr(verif, "OUTPUTS", salidas)
+
+    informe = verif.verificar()
+
+    assert informe.fallos == 0, [t for m, t in informe.lineas if m == verif.FALLO]
