@@ -10,7 +10,19 @@ Pipeline serverless, sin base de datos, coste de infraestructura ~0 €.
 
 ## Cómo arrancarlo
 
-### Pipeline
+### En un comando
+
+```bash
+export FIRMS_MAP_KEY=tu-clave     # o pégala en un fichero .env
+./arrancar.sh                     # abre http://localhost:5173
+```
+
+Descarga los incendios reales de las últimas horas, ejecuta el pipeline
+completo y levanta el visor. No necesita Cloudflare, R2, Actions ni ningún
+servidor: todo local. Sin clave arranca igual, con datos de demostración y un
+aviso permanente que lo declara.
+
+### Pipeline, paso a paso
 
 ```bash
 pip install -r requirements.txt
