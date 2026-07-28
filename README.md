@@ -1,10 +1,26 @@
 # incendios-es
 
+### 🔥 **[Ver el mapa en vivo →](https://pedromaaz13.github.io/incendios_forestales_app/)**
+
+[![publicar](https://github.com/pedromaaz13/incendios_forestales_app/actions/workflows/publicar.yml/badge.svg)](https://github.com/pedromaaz13/incendios_forestales_app/actions/workflows/publicar.yml)
+[![ci](https://github.com/pedromaaz13/incendios_forestales_app/actions/workflows/ci.yml/badge.svg)](https://github.com/pedromaaz13/incendios_forestales_app/actions/workflows/ci.yml)
+
 Visor de focos activos en España a partir de detecciones satelitales de anomalías térmicas.
 Pipeline serverless, sin base de datos, coste de infraestructura ~0 €.
 
+Se republica solo **cada 30 minutos** desde GitHub Actions.
+
 > Estas detecciones **no son información oficial de emergencias**. Un hotspot es un píxel
 > con anomalía térmica, no un incendio confirmado. Para incidencias en curso, 112.
+
+## Dónde vive cada cosa
+
+| | |
+|---|---|
+| **Visor** | <https://pedromaaz13.github.io/incendios_forestales_app/> |
+| Datos publicados | [`/live/manifest.json`](https://pedromaaz13.github.io/incendios_forestales_app/live/manifest.json) · [`incidents.geojson`](https://pedromaaz13.github.io/incendios_forestales_app/live/incidents.geojson) · [`sources.json`](https://pedromaaz13.github.io/incendios_forestales_app/live/sources.json) |
+| Publicación | [`.github/workflows/publicar.yml`](.github/workflows/publicar.yml) — cron `*/30` |
+| Integración continua | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
 
 ---
 
