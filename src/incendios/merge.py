@@ -24,7 +24,12 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from .config import CRS_METRIC_CANARIAS, CRS_METRIC_MAINLAND, CRS_WGS84
+from .config import (
+    ACTIVE_WINDOW_HOURS,
+    CRS_METRIC_CANARIAS,
+    CRS_METRIC_MAINLAND,
+    CRS_WGS84,
+)
 
 log = logging.getLogger(__name__)
 
@@ -208,6 +213,25 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
     fires["official_confirmed"] = fires["confirmed_by"].astype(bool)
     fires["origin"] = np.where(fires["official_confirmed"], "ambos", "satelite")
     fires["satellite_confirmed"] = True
+
+    # El estado del cluster que produce `build_fires` es activo/inactivo, y ese
+    # vocabulario no es el del contrato 4.3 (activo, estabilizado, controlado,
+    # extinguido). La traducción no es cosmética, es una decisión de dominio:
+    #
+    #  - Con parte oficial manda el estado oficial. Es el único que puede
+    #    afirmar "controlado": el satélite solo ve calor, no ve bomberos.
+    #  - Sin parte oficial y con detección reciente, "activo".
+    #  - Sin parte oficial y sin detección reciente **no se publica como
+    #    incidente**. No sabemos si se apagó, si está bajo nube o si el satélite
+    #    no ha vuelto a pasar; llamarlo "controlado" sería inventar y llamarlo
+    #    "activo" sería alarmar. Sus focos siguen en la capa de hotspots, que es
+    #    el dato crudo, sin afirmar nada sobre el estado del fuego.
+    inactivo = fires["status"].eq("inactivo") if "status" in fires.columns else False
+    fires["status"] = np.where(
+        fires["official_confirmed"] & fires["official_status"].notna(),
+        fires["official_status"],
+        np.where(inactivo, "_sin_detecciones_recientes", "activo"),
+    )
     # La posición del cluster viene de FIRMS: un píxel VIIRS de 375 m, así que
     # el radio de incertidumbre es medio píxel. Es la mitad del producto (RF-F-03):
     # dibujar un punto donde solo hay un área es fingir precisión.
@@ -261,6 +285,16 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
     if extinguidos:
         out = out[out["status"] != "extinguido"].reset_index(drop=True)
         log.info("Incidentes: %d extinguidos filtrados (invariante 8)", extinguidos)
+
+    sin_recientes = int((out["status"] == "_sin_detecciones_recientes").sum())
+    if sin_recientes:
+        out = out[out["status"] != "_sin_detecciones_recientes"].reset_index(drop=True)
+        log.info(
+            "Incidentes: %d clusters satelitales sin detecciones en las últimas "
+            "%d h, no publicados como incidentes (sus focos siguen en la capa "
+            "de hotspots)",
+            sin_recientes, ACTIVE_WINDOW_HOURS,
+        )
 
     log.info(
         "Incidentes: %d satelitales · %d oficiales huérfanos",

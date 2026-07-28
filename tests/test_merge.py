@@ -328,6 +328,61 @@ def test_origin_ambos_when_both_confirm(now):
     assert bool(fila["satellite_confirmed"]) is True
 
 
+def test_cluster_status_is_translated_to_the_contract_vocabulary(now):
+    """`build_fires` marca activo/inactivo y el contrato 4.3 no conoce "inactivo".
+
+    Lo detectó la primera ejecución con datos reales: 173 incendios y el
+    validador se negó a publicar, con razón.
+    """
+    official = make_official([]).iloc[0:0]
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+    fires["status"] = "activo"
+    official, fires = merge.match(official, fires)
+
+    incidentes = merge.build_incidents(official, fires)
+
+    assert set(incidentes["status"]) <= {"activo", "estabilizado", "controlado"}
+
+
+def test_satellite_only_cluster_without_recent_detections_is_not_published(now):
+    """Sin parte oficial y sin detección reciente no se publica como incidente.
+
+    No sabemos si se apagó, si está bajo nube o si el satélite no ha vuelto a
+    pasar. Llamarlo "controlado" sería inventarlo y llamarlo "activo" sería
+    alarmar. Sus focos siguen en la capa de hotspots, que no afirma nada.
+    """
+    official = make_official([]).iloc[0:0]
+    fires = make_fires([
+        {"fire_id": "reciente", "latitude": 39.5, "longitude": -0.5},
+        {"fire_id": "antiguo", "latitude": 40.5, "longitude": -5.5},
+    ])
+    fires["status"] = ["activo", "inactivo"]
+    official, fires = merge.match(official, fires)
+
+    incidentes = merge.build_incidents(official, fires)
+
+    assert incidentes["id"].tolist() == ["reciente"]
+
+
+def test_official_status_wins_over_the_cluster_window(now):
+    """Con parte oficial manda el estado oficial: el satélite ve calor, no ve
+    bomberos, así que solo la comunidad puede decir "controlado"."""
+    official = make_official(
+        [{"external_id": "A", "latitude": 39.5, "longitude": -0.5,
+          "status": "controlado", "reported_at": now}]
+    )
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+    # El cluster lleva sin detecciones más de la ventana activa...
+    fires["status"] = "inactivo"
+
+    emparejados, clusters = merge.match(official, fires)
+    incidentes = merge.build_incidents(emparejados, clusters)
+
+    # ...pero hay parte oficial, así que se publica con el estado que declara.
+    fila = incidentes[incidentes["id"] == "f1"].iloc[0]
+    assert fila["status"] == "controlado"
+
+
 def test_origin_satelite_when_no_official(now):
     official = make_official([]).iloc[0:0]
     fires = make_fires([{"fire_id": "f1", "latitude": 39.500, "longitude": -0.5}])
