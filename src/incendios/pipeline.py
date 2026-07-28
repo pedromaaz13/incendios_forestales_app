@@ -83,8 +83,24 @@ def run(
 
     # --- limpieza y clustering ---------------------------------------------
 
-    hotspots = clean_mod.clean(crudos)
-    suprimidos_industrial, suprimidos_baja = _contar_suprimidos(crudos, hotspots)
+    # Las tres fases de `clean` se llaman por separado en lugar de usar
+    # `clean.clean()` para poder contar qué descartó cada una. Antes se restaba
+    # el total y se atribuía todo a la máscara industrial, lo que publicaba 464
+    # "focos industriales suprimidos" cuando en realidad eran duplicados entre
+    # pasadas de NOAA-20 y NOAA-21. El riesgo 3 de la sección 11 exige que ese
+    # número sea cierto: es la única pista si la máscara oculta un incendio real.
+    gdf = clean_mod.to_gdf(crudos)
+    tras_confianza = clean_mod.filter_confidence(gdf)
+    tras_exclusiones = clean_mod.apply_exclusions(tras_confianza)
+    hotspots = clean_mod.deduplicate_spatial(tras_exclusiones)
+
+    suprimidos_baja = len(gdf) - len(tras_confianza)
+    suprimidos_industrial = len(tras_confianza) - len(tras_exclusiones)
+    duplicados = len(tras_exclusiones) - len(hotspots)
+    log.info(
+        "Descartes: %d baja confianza · %d máscara industrial · %d duplicados",
+        suprimidos_baja, suprimidos_industrial, duplicados,
+    )
 
     if hotspots.empty:
         log.error("Todos los hotspots cayeron en los filtros. Se aborta.")
@@ -118,6 +134,7 @@ def run(
         official=official,
         suppressed_industrial=suprimidos_industrial,
         suppressed_lowconf=suprimidos_baja,
+        deduplicated=duplicados,
         pipeline_started_at=inicio,
         now=datetime.now(timezone.utc),
     )
@@ -167,18 +184,6 @@ def _recoger_oficiales() -> pd.DataFrame:
     except Exception as exc:  # noqa: BLE001 — aislamiento deliberado
         log.error("Fallo recogiendo fuentes oficiales: %s: %s", type(exc).__name__, exc)
         return OfficialSource.empty()
-
-
-def _contar_suprimidos(crudos: pd.DataFrame, limpios: gpd.GeoDataFrame) -> tuple[int, int]:
-    """Cuántos hotspots cayó cada filtro.
-
-    El riesgo 3 de la sección 11 —que la máscara oculte un incendio real— exige
-    registrar siempre lo suprimido. Si algún día desaparece un incendio del
-    mapa, este número es la única pista de por dónde empezar a mirar.
-    """
-    baja = int((crudos["confidence_pct"] < 30).sum())
-    industrial = max(0, len(crudos) - baja - len(limpios))
-    return industrial, baja
 
 
 def _informe_de_salud(
