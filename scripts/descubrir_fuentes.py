@@ -31,8 +31,9 @@ Uso:
     # Enumerar las capas de un servidor ArcGIS o GeoServer
     python scripts/descubrir_fuentes.py --listar "https://services.arcgis.com/xxx/ArcGIS/rest/services"
 
-    # Comprobar que tu FIRMS_MAP_KEY funciona
+    # Comprobar que tus claves funcionan
     python scripts/descubrir_fuentes.py --firms
+    python scripts/descubrir_fuentes.py --aemet
 """
 
 from __future__ import annotations
@@ -274,6 +275,64 @@ def comprobar_firms() -> None:
     print("    del repositorio, con el nombre FIRMS_MAP_KEY.")
 
 
+def comprobar_aemet() -> None:
+    """Verifica AEMET_API_KEY y enseña qué desbloquea.
+
+    AEMET publica dos cosas que ninguna otra fuente accesible da hoy: el índice
+    oficial de riesgo de incendio para España y los avisos meteorológicos
+    oficiales en formato CAP. Es lo que EFFIS iba a aportar, servido por la
+    agencia estatal en vez de por un WFS europeo con la base de datos caída.
+    """
+    _titulo("Comprobando AEMET_API_KEY")
+    clave = os.environ.get("AEMET_API_KEY", "")
+    if not clave:
+        print("  ✕ AEMET_API_KEY no está en el entorno.")
+        print("    Pídela gratis en https://opendata.aemet.es/centrodedescargas/altaUsuario")
+        print("    Llega por correo en unos minutos. Luego:")
+        print("      export AEMET_API_KEY=...")
+        return
+
+    endpoints = {
+        "incendios/mapasriesgo/estimado/area/p": "índice de riesgo de incendio",
+        "avisos_cap/ultimoelaborado/area/esp": "avisos meteorológicos oficiales (CAP)",
+    }
+
+    for ruta, descripcion in endpoints.items():
+        url = f"https://opendata.aemet.es/opendata/api/{ruta}"
+        try:
+            with cliente() as c:
+                r = c.get(url, params={"api_key": clave})
+        except Exception as exc:
+            print(f"  ✕ {descripcion}: sin conexión ({exc})")
+            continue
+
+        # AEMET contesta 200 con el cuerpo vacío cuando falta o falla la clave,
+        # así que hay que mirar el contenido. Mismo patrón que FIRMS.
+        cuerpo = r.text.strip()
+        if not cuerpo:
+            print(f"  ✕ {descripcion}: respuesta vacía. La clave no es válida.")
+            continue
+
+        try:
+            datos = r.json()
+        except Exception:
+            print(f"  ⚠ {descripcion}: respuesta no-JSON: {cuerpo[:120]}")
+            continue
+
+        # La API devuelve un sobre con la URL real de los datos.
+        estado = datos.get("estado")
+        if estado != 200:
+            print(f"  ✕ {descripcion}: estado {estado} · {datos.get('descripcion')}")
+            continue
+
+        print(f"  ✓ {descripcion}")
+        print(f"      datos en: {datos.get('datos', '')[:100]}")
+
+    print("\n    Si las dos salen con ✓, mete la clave en Settings → Secrets and")
+    print("    variables → Actions del repositorio, con el nombre AEMET_API_KEY,")
+    print("    y pégame esta salida para que configure los adaptadores.")
+
+
 def explorar() -> None:
     _titulo("Explorando candidatas conocidas")
     print("Recuerda: que una URL responda NO significa que sea la buena.")
@@ -290,6 +349,7 @@ def main() -> None:
     p.add_argument("--listar", metavar="URL", help="enumerar capas de un ArcGIS/GeoServer")
     p.add_argument("--explorar", action="store_true", help="probar las candidatas conocidas")
     p.add_argument("--firms", action="store_true", help="comprobar FIRMS_MAP_KEY")
+    p.add_argument("--aemet", action="store_true", help="comprobar AEMET_API_KEY")
     args = p.parse_args()
 
     if CONTACTO == "cambia-esto@ejemplo.org":
@@ -298,6 +358,8 @@ def main() -> None:
 
     if args.firms:
         comprobar_firms()
+    elif args.aemet:
+        comprobar_aemet()
     elif args.listar:
         listar_servicios(args.listar)
     elif args.url:
