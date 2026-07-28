@@ -1,0 +1,134 @@
+name: publicar
+
+# Publica el visor con datos reales en GitHub Pages.
+#
+# Es la ruta corta a producción: solo necesita `FIRMS_MAP_KEY`. Cloudflare R2 y
+# el workflow `ingest` son para más adelante, cuando el histórico crezca lo
+# suficiente como para no caber en el repositorio.
+#
+# Limitación consciente: Pages sirve ficheros estáticos y no guarda estado entre
+# ejecuciones, así que el histórico en Parquet **no se acumula** por esta vía.
+# Para eso hace falta el bucket. Aquí lo que importa es ver el mapa funcionando.
+
+on:
+  schedule:
+    # Cada 30 min. Más a menudo no aporta: FIRMS NRT tiene ~3 h de latencia y
+    # los minutos de Actions no son infinitos.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Instalar dependencias
+        run: |
+          pip install -q -r requirements.txt
+          cd web && npm ci
+
+      # Si la clave falta o está agotada, se publica la demo en lugar de un
+      # mapa vacío. Un visor que dice "0 incendios" cuando lo que pasa es que no
+      # hay clave es exactamente el fallo que este proyecto evita.
+      - name: Ejecutar pipeline
+        id: pipeline
+        env:
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          PYTHONPATH: src
+        run: |
+          if [ -z "$FIRMS_MAP_KEY" ]; then
+            echo "::warning::FIRMS_MAP_KEY no configurada; se publica la demo"
+            python scripts/build_demo_data.py
+            echo "modo=demo" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if python -m incendios.pipeline -v --no-raw; then
+            mkdir -p web/public/live
+            cp data/out/*.geojson data/out/*.json web/public/live/
+            echo "modo=real" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::El pipeline abortó; se publica la demo"
+            python scripts/build_demo_data.py
+            echo "modo=demo" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Comprueba que lo que se va a publicar cuadra con lo que trajo la fuente:
+      # recuentos, invariantes, coordenadas y —sobre todo— que la antigüedad
+      # publicada sea la real.
+      - name: Verificar coherencia de los datos
+        if: steps.pipeline.outputs.modo == 'real'
+        env:
+          PYTHONPATH: src
+        run: |
+          python scripts/verificar_datos.py | tee /tmp/informe.txt
+          {
+            echo "## Verificación de datos"
+            echo
+            python scripts/verificar_datos.py --markdown
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Compilar el visor
+        working-directory: web
+        env:
+          # Pages sirve bajo /nombre-del-repo/, no bajo la raíz.
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npx vite build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+      - name: Desplegar
+        id: despliegue
+        uses: actions/deploy-pages@v4
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Publicación"
+            echo
+            echo "- Modo: **${{ steps.pipeline.outputs.modo }}**"
+            echo "- URL: ${{ steps.despliegue.outputs.page_url }}"
+            if [ -f data/out/manifest.json ]; then
+              echo
+              echo '<details><summary>manifest.json</summary>'
+              echo
+              echo '```json'
+              cat data/out/manifest.json
+              echo '```'
+              echo
+              echo '</details>'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

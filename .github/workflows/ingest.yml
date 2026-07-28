@@ -1,11 +1,23 @@
 name: ingest
 
+# DESACTIVADO hasta que haya bucket. Este workflow publica en Cloudflare R2 y
+# sin los secretos de R2 fallaría en rojo cada diez minutos, que es la mejor
+# forma de que nadie vuelva a mirar las notificaciones de Actions.
+#
+# Mientras tanto el visor se publica con `publicar.yml`, que solo necesita
+# FIRMS_MAP_KEY y despliega en GitHub Pages. Para activar este:
+#
+#   1. Crea un bucket R2 en Cloudflare.
+#   2. Añade los secretos AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY y las
+#      variables R2_BUCKET y R2_ACCOUNT_ID.
+#   3. Descomenta el bloque `schedule`.
+#
+# La diferencia real frente a Pages: R2 sí acumula el histórico en Parquet,
+# que es lo que necesita la máscara de falsos positivos para construirse.
+
 on:
-  schedule:
-    # Cada 10 min (RF-P-11). FIRMS NRT se refresca cada ~3 h, pero las pasadas
-    # no están alineadas y una cadencia corta reduce el peor caso de latencia
-    # percibida. SEVIRI, cuando entre, publica cada 15 min.
-    - cron: "*/10 * * * *"
+  # schedule:
+  #   - cron: "*/10 * * * *"   # RF-P-11
   workflow_dispatch:
 
 concurrency:

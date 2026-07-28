@@ -86,6 +86,10 @@ test('E2E-03b · el filtro no recarga datos', async ({ page }) => {
   // RF-F-09: los filtros van por `setFilter`, no por refetch. Si alguien lo
   // cambiara por una recarga, el rendimiento de RNF-04 se caería sin aviso.
   await abrir(page);
+  // La capa de hotspots se carga en diferido (RF-F-11) y su petición puede
+  // llegar después del `abrir`. Sin esperar a que la red se calme, el listener
+  // la contaría como si fuera culpa del filtro.
+  await page.waitForLoadState('networkidle');
 
   const peticiones: string[] = [];
   page.on('request', (r) => {

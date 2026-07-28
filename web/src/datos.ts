@@ -14,7 +14,10 @@
 
 import type { ColeccionIncidentes, Manifiesto, Salud } from './tipos';
 
-const BASE = '/live';
+// `BASE_URL` lo inyecta Vite: '/' en local y '/nombre-del-repo/' en GitHub
+// Pages. Codificar '/live' a pelo rompería el despliegue bajo subruta con
+// cuatro 404 silenciosos, que es justo el fallo que este proyecto vigila.
+const BASE = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/live`;
 
 export class ErrorDatos extends Error {
   constructor(
