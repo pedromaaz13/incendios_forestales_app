@@ -7,6 +7,7 @@
  */
 
 import {
+  coordenadas,
   etiquetaEstado,
   fechaHora,
   listaFuentes,
@@ -87,7 +88,11 @@ export function pintarLista(
 
 function tarjeta(p: PropiedadesIncidente): string {
   const siglas = siglasFuente(p.confirmed_by);
-  const lugar = p.municipio ?? 'Ubicación por determinar';
+  // Sin capa municipal no hay nombre, pero sí coordenadas: decir dónde está es
+  // lo que la persona ha venido a saber.
+  const hayCoordenadas = p._lon !== undefined && p._lat !== undefined;
+  const lugar =
+    p.municipio ?? (hayCoordenadas ? coordenadas(p._lon!, p._lat!) : 'Ubicación por determinar');
   const provincia = p.provincia ? `, ${texto(p.provincia)}` : '';
 
   const medios = p.resources_text

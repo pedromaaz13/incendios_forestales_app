@@ -99,6 +99,8 @@ export function prepararIncidentes(fc: ColeccionIncidentes): ColeccionIncidentes
     const lat = f.geometry?.coordinates?.[1] ?? 40;
     const cos = Math.cos((lat * Math.PI) / 180) || 1;
     f.properties._radio_base = metros / (METROS_POR_PIXEL_Z0 * cos);
+    f.properties._lon = f.geometry?.coordinates?.[0];
+    f.properties._lat = lat;
   }
   return fc;
 }

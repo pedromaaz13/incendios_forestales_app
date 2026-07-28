@@ -164,3 +164,19 @@ export function iconoEstadoFuente(estado: string): string {
       return '○';
   }
 }
+
+
+/**
+ * Coordenadas legibles, como último recurso cuando no hay municipio.
+ *
+ * Sin la capa del IGN todos los incidentes salen como "Ubicación por
+ * determinar", que es honesto y completamente inútil: alguien que mira el
+ * listado no puede saber si le pilla cerca. Cuatro decimales son ~11 m, de
+ * sobra para localizarlo en el mapa y sin fingir una precisión que el propio
+ * `position_precision_m` ya desmiente.
+ */
+export function coordenadas(lon: number, lat: number): string {
+  const ns = lat >= 0 ? 'N' : 'S';
+  const eo = lon >= 0 ? 'E' : 'O';
+  return `${Math.abs(lat).toFixed(4)}° ${ns}, ${Math.abs(lon).toFixed(4)}° ${eo}`;
+}
