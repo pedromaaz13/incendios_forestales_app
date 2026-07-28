@@ -224,3 +224,70 @@ def test_layer_without_crs_is_rejected(tmp_path):
     finally:
         geopandas.read_file = original
         muni.gpd.read_file = original
+
+
+# --- selección de capa dentro de una descarga --------------------------------
+
+
+def test_rejects_a_line_layer_with_a_useful_message(tmp_path):
+    """La serie del IGN se llama "líneas límite" y son literalmente líneas.
+
+    Con líneas no hay point-in-polygon. Rechazarlo con un mensaje que diga qué
+    buscar ahorra media hora de desconcierto a quien acaba de descargarlo.
+    """
+    from shapely.geometry import LineString
+
+    origen = tmp_path / "lineas_limite.geojson"
+    gpd.GeoDataFrame(
+        {"NAMEUNIT": ["l1", "l2"], "geometry": [LineString([(0, 40), (1, 41)])] * 2},
+        crs=4326,
+    ).to_file(origen, driver="GeoJSON")
+
+    with pytest.raises(muni.CapaNoValida, match="recintos"):
+        muni.preparar(origen, tmp_path / "salida.geojson")
+
+
+def test_prefers_polygon_layers_over_line_layers_in_a_folder(tmp_path):
+    """En la descarga vienen las dos capas juntas: hay que probar la buena
+    primero, no fallar en la primera por orden alfabético."""
+    carpeta = tmp_path / "descarga"
+    carpeta.mkdir()
+    (carpeta / "aa_lineas_limite.geojson").write_text("{}", encoding="utf-8")
+    (carpeta / "zz_recintos_municipales.geojson").write_text("{}", encoding="utf-8")
+
+    orden = [f.name for f in muni.candidatos_en(carpeta)]
+
+    assert orden[0] == "zz_recintos_municipales.geojson"
+
+
+def test_finds_layers_inside_a_zip(tmp_path):
+    import zipfile
+
+    origen = tmp_path / "descarga.zip"
+    with zipfile.ZipFile(origen, "w") as z:
+        z.writestr("subcarpeta/recintos_municipales.geojson", "{}")
+        z.writestr("subcarpeta/leeme.txt", "no es una capa")
+
+    candidatos = muni.candidatos_en(origen)
+
+    assert len(candidatos) == 1
+    assert candidatos[0].name == "recintos_municipales.geojson"
+
+
+def test_polygon_detection():
+    from shapely.geometry import LineString, Polygon
+
+    poligonos = gpd.GeoDataFrame(geometry=[Polygon([(0, 0), (1, 0), (1, 1)])], crs=4326)
+    lineas = gpd.GeoDataFrame(geometry=[LineString([(0, 0), (1, 1)])], crs=4326)
+
+    assert muni.es_poligonal(poligonos)
+    assert not muni.es_poligonal(lineas)
+
+
+def test_empty_folder_says_what_it_looked_for(tmp_path):
+    vacia = tmp_path / "vacia"
+    vacia.mkdir()
+    (vacia / "leeme.txt").write_text("nada", encoding="utf-8")
+
+    with pytest.raises(muni.CapaNoValida, match="reconocible"):
+        muni.candidatos_en(vacia)
