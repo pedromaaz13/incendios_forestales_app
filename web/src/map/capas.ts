@@ -14,6 +14,7 @@ export const FUENTE_HOTSPOTS = 'hotspots';
 export const FUENTE_PERIMETROS = 'perimetros';
 export const FUENTE_VIENTO = 'viento';
 export const FUENTE_AIRE = 'aire';
+export const FUENTE_TRAFICO = 'trafico';
 
 export const CAPA_INCERTIDUMBRE = 'incidentes-incertidumbre';
 export const CAPA_INCIDENTES = 'incidentes-simbolo';
@@ -23,6 +24,8 @@ export const CAPA_PERIMETRO_ESTIMADO = 'perimetros-estimado';
 export const CAPA_PERIMETRO_EFFIS = 'perimetros-effis';
 export const CAPA_VIENTO = 'viento-flecha';
 export const CAPA_AIRE = 'aire-circulo';
+export const CAPA_TRAFICO = 'trafico-corte';
+export const CAPA_TRAFICO_INCENDIO = 'trafico-corte-incendio';
 
 /** Zoom a partir del cual aparecen los hotspots crudos (RF-F-04). */
 export const ZOOM_HOTSPOTS = 9;
@@ -322,4 +325,47 @@ export function anadirCapaAire(mapa: MapaGL): void {
     },
     CAPA_INCERTIDUMBRE,
   );
+}
+
+
+/**
+ * Cortes de tráfico · RF-F-11.
+ *
+ * Dos capas y no una. Los cortes **declarados por incendio forestal** —la DGT lo
+ * dice en su propio vocabulario, aquí no se deduce— van en su capa, más grandes
+ * y con halo, porque son la información más accionable del visor: quien tiene
+ * que salir de una zona necesita saber por dónde no puede pasar. El resto de
+ * cortes va apagado en gris, como contexto de carretera.
+ *
+ * Un accidente a 2 km de un foco NO se pinta como corte por incendio. La marca
+ * viene del campo `por_incendio`, que refleja lo que declara la DGT.
+ */
+export function anadirCapasTrafico(mapa: MapaGL): void {
+  mapa.addLayer({
+    id: CAPA_TRAFICO,
+    type: 'circle',
+    source: FUENTE_TRAFICO,
+    filter: ['!=', ['get', 'por_incendio'], true],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 12, 6],
+      'circle-color': '#7d9199',
+      'circle-opacity': 0.7,
+      'circle-stroke-width': 1,
+      'circle-stroke-color': '#0f1619',
+    },
+  });
+
+  mapa.addLayer({
+    id: CAPA_TRAFICO_INCENDIO,
+    type: 'circle',
+    source: FUENTE_TRAFICO,
+    filter: ['==', ['get', 'por_incendio'], true],
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 6, 5, 12, 12],
+      'circle-color': '#ffe08a',
+      'circle-opacity': 0.95,
+      'circle-stroke-width': 2.5,
+      'circle-stroke-color': '#c81e1e',
+    },
+  });
 }

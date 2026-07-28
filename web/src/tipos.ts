@@ -123,3 +123,18 @@ export interface PropiedadesAire {
   co: number | null;
   observed_at: string | null;
 }
+
+export interface PropiedadesTrafico {
+  causa: string;
+  detalle: string | null;
+  cierre: string | null;
+  /** Lo declara la DGT en su vocabulario; no se deduce por proximidad. */
+  por_incendio: boolean;
+  carretera: string | null;
+  pk: string | null;
+  municipio: string | null;
+  provincia: string | null;
+  comunidad: string | null;
+  desde: string | null;
+  edad_dias: number | null;
+}

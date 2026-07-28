@@ -39,6 +39,7 @@ from . import firms
 from . import health as health_mod
 from . import merge as merge_mod
 from . import publish as publish_mod
+from . import trafico as trafico_mod
 from . import validate as validate_mod
 from . import wind as wind_mod
 from .config import OUTPUTS
@@ -65,6 +66,7 @@ def run(
     *,
     con_viento: bool = True,
     con_aire: bool = True,
+    con_trafico: bool = True,
     outputs=None,
 ) -> dict:
     """Ejecuta el pipeline completo y devuelve el manifiesto publicado."""
@@ -158,10 +160,11 @@ def run(
 
     viento = wind_mod.fetch() if con_viento else None
     calidad_aire = aire_mod.fetch() if con_aire else None
+    cortes = trafico_mod.fetch() if con_trafico else None
 
     publish_mod.publish_atomically([
         ("capas de datos", lambda: _escribir_datos(
-            hotspots, fires, incidents, perimeters, viento, calidad_aire, outputs
+            hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes, outputs
         )),
         ("sources.json", lambda: informe.write(outputs.sources_json)),
         ("manifest.json", lambda: build_mod.write_manifest(manifest, outputs.manifest)),
@@ -231,7 +234,7 @@ def _informe_de_salud(
 
 
 def _escribir_datos(
-    hotspots, fires, incidents, perimeters, viento, calidad_aire, outputs
+    hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes, outputs
 ) -> None:
     """Todas las capas menos `sources.json` y `manifest.json`.
 
@@ -254,6 +257,11 @@ def _escribir_datos(
 
     if calidad_aire is not None and len(calidad_aire):
         export_mod._write_geojson(calidad_aire, outputs.aire_geojson, aire_mod.AIRE_SCHEMA)
+
+    if cortes is not None and len(cortes):
+        export_mod._write_geojson(
+            cortes, outputs.trafico_geojson, trafico_mod.TRAFICO_SCHEMA
+        )
 
     export_mod.write_pmtiles(outputs.hotspots_geojson, outputs.hotspots_pmtiles, layer="hotspots")
     export_mod.write_history(hotspots)
@@ -281,6 +289,9 @@ def main() -> None:
     parser.add_argument(
         "--sin-aire", action="store_true", help="omitir la capa de calidad del aire"
     )
+    parser.add_argument(
+        "--sin-trafico", action="store_true", help="omitir los cortes de la DGT"
+    )
     args = parser.parse_args()
 
     setup_logging(args.verbose)
@@ -288,6 +299,7 @@ def main() -> None:
         persist_raw=not args.no_raw,
         con_viento=not args.sin_viento,
         con_aire=not args.sin_aire,
+        con_trafico=not args.sin_trafico,
     )
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
 
