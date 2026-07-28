@@ -24,6 +24,20 @@ MUNICIPIOS_PATH = CONFIG / "municipios.geojson"
 NAME_CANDIDATES = ("NAMEUNIT", "nombre", "NOMBRE", "municipio", "name")
 PROV_CANDIDATES = ("provincia", "PROVINCIA", "CODNUT3", "nut3")
 
+# Distancia máxima a territorio español para dar un foco por nacional.
+#
+# Los bbox de FIRMS son rectángulos y arrastran país vecino: el de la península
+# (-9.60, 35.85, 4.40, 43.90) cubre Portugal entero, el sur de Francia y parte
+# de Argelia. Sin recortar, la mitad de los incendios "de España" resultaban ser
+# portugueses o argelinos, y eso infla el recuento de una aplicación cuyo título
+# dice España.
+#
+# El margen no es cero por dos razones: la geolocalización de VIIRS tiene un
+# error de un par de kilómetros y un incendio costero puede caer mar adentro; y
+# un fuego a pocos kilómetros de la raya sigue importándole a quien vive en
+# Zamora o en Badajoz. A partir de ahí ya no es un incendio de España.
+MARGEN_FRONTERA_M = 15_000
+
 
 def _pick(gdf: gpd.GeoDataFrame, candidates: tuple[str, ...]) -> str | None:
     for c in candidates:
@@ -61,3 +75,59 @@ def enrich_admin(fires: gpd.GeoDataFrame, path: Path = MUNICIPIOS_PATH) -> gpd.G
     matched = fires["municipio"].notna().sum()
     log.info("Geocoding inverso: %d/%d incendios localizados", int(matched), len(fires))
     return fires
+
+
+def clip_to_spain(
+    gdf: gpd.GeoDataFrame,
+    path: Path = MUNICIPIOS_PATH,
+    margen_m: float = MARGEN_FRONTERA_M,
+) -> tuple[gpd.GeoDataFrame, int]:
+    """Descarta lo que caiga fuera de España y devuelve (conservados, descartados).
+
+    Se aplica sobre los focos crudos y no sobre los incidentes ya formados, para
+    que los recuentos del manifiesto también sean de España y para que el
+    clustering no una un foco de Zamora con otro de Braganza en un mismo
+    incendio.
+
+    Sin capa municipal no se recorta nada: es preferible publicar de más —y
+    decirlo— que descartar incendios reales por una capa que no está.
+    """
+    if not len(gdf):
+        return gdf, 0
+
+    if not path.exists():
+        log.warning(
+            "Sin capa de municipios en %s: no se puede recortar a España y los "
+            "bbox de FIRMS arrastran Portugal, Francia y Argelia",
+            path,
+        )
+        return gdf, 0
+
+    muni = gpd.read_file(path)
+    metrico = 25830
+    puntos = gdf.to_crs(metrico)
+    poligonos = muni.to_crs(metrico)[["geometry"]]
+
+    # Dos pasadas: `within` resuelve la inmensa mayoría y es barato; la búsqueda
+    # del vecino más próximo, que sí es cara, solo se hace sobre los que quedan
+    # fuera de todo municipio.
+    dentro = gpd.sjoin(puntos, poligonos, how="left", predicate="within")
+    dentro = dentro[~dentro.index.duplicated(keep="first")]
+    en_tierra = dentro["index_right"].notna().values
+
+    resto = puntos[~en_tierra]
+    cerca = en_tierra.copy()
+    if len(resto):
+        vecino = gpd.sjoin_nearest(resto, poligonos, how="left", distance_col="_d")
+        vecino = vecino[~vecino.index.duplicated(keep="first")]
+        cerca[~en_tierra] = (vecino["_d"] <= margen_m).values
+
+    descartados = int((~cerca).sum())
+    if descartados:
+        log.info(
+            "Recorte a España: %d focos descartados por estar a más de %.0f km "
+            "de territorio español (los bbox de FIRMS cubren Portugal, Francia "
+            "y el norte de África)",
+            descartados, margen_m / 1000,
+        )
+    return gdf[cerca].copy(), descartados
