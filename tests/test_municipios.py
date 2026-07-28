@@ -255,9 +255,90 @@ def test_prefers_polygon_layers_over_line_layers_in_a_folder(tmp_path):
     (carpeta / "aa_lineas_limite.geojson").write_text("{}", encoding="utf-8")
     (carpeta / "zz_recintos_municipales.geojson").write_text("{}", encoding="utf-8")
 
-    orden = [f.name for f in muni.candidatos_en(carpeta)]
+    lotes = muni.candidatos_en(carpeta)
 
-    assert orden[0] == "zz_recintos_municipales.geojson"
+    assert lotes[0][0].name == "zz_recintos_municipales.geojson"
+
+
+def test_picks_administrative_unit_4th_order_from_the_ign_download(tmp_path):
+    """El README del IGN describe exactamente qué hay dentro:
+
+        AdministrativeBoundary → líneas (fronteras, autonómicas, provinciales,
+                                 municipales)
+        AdministrativeUnit     → superficies (país, comunidades, provincias,
+                                 municipios)
+
+    De las ocho combinaciones solo sirve AdministrativeUnit + 4thOrder.
+    """
+    carpeta = tmp_path / "lineas_limite_gml"
+    carpeta.mkdir()
+    for nombre in (
+        "AdministrativeBoundary_1stOrder.gml",
+        "AdministrativeBoundary_4thOrder.gml",
+        "AdministrativeUnit_1stOrder.gml",
+        "AdministrativeUnit_2ndOrder.gml",
+        "AdministrativeUnit_3rdOrder.gml",
+        "AdministrativeUnit_4thOrder.gml",
+    ):
+        (carpeta / nombre).write_text("<gml/>", encoding="utf-8")
+
+    lotes = muni.candidatos_en(carpeta)
+
+    assert [f.name for f in lotes[0]] == ["AdministrativeUnit_4thOrder.gml"]
+    # Y las líneas quedan las últimas, no se prueban antes por casualidad.
+    assert all("Boundary" in f.name for f in lotes[-1])
+
+
+def test_groups_a_layer_split_across_several_files(tmp_path):
+    """El IGN parte las capas: "cada archivo .gml contiene como máximo 10000
+    entidades". Probados de uno en uno, los ~8.130 municipios repartidos en
+    dos ficheros fallarían el recuento en los dos. Van juntos."""
+    carpeta = tmp_path / "descarga"
+    carpeta.mkdir()
+    for i in (1, 2, 3):
+        (carpeta / f"AdministrativeUnit_4thOrder_{i}.gml").write_text("<gml/>", encoding="utf-8")
+
+    lotes = muni.candidatos_en(carpeta)
+
+    assert len(lotes[0]) == 3
+
+
+def test_concatenates_a_split_layer_before_validating(tmp_path):
+    """La prueba de que la concatenación es lo que salva el caso: dos mitades
+    que por separado no llegan al mínimo, juntas sí."""
+    mitad_a = tmp_path / "AdministrativeUnit_4thOrder_1.geojson"
+    mitad_b = tmp_path / "AdministrativeUnit_4thOrder_2.geojson"
+
+    completa = _capa_con_controles(8000)
+    completa.iloc[:4000].to_file(mitad_a, driver="GeoJSON")
+    completa.iloc[4000:].to_file(mitad_b, driver="GeoJSON")
+
+    # Por separado, cada mitad falla el recuento.
+    with pytest.raises(muni.CapaNoValida, match="fuera del rango"):
+        muni.preparar(mitad_a, tmp_path / "no.geojson")
+
+    # Juntas, pasan.
+    destino = tmp_path / "municipios.geojson"
+    resumen = muni.preparar([mitad_a, mitad_b], destino)
+
+    assert resumen["municipios"] == 8000
+    assert destino.exists()
+
+
+def test_batches_with_mixed_crs_are_reprojected(tmp_path):
+    """Canarias viene en REGCAN95 y la península en ETRS89. Concatenar sin
+    reproyectar mezclaría coordenadas de sistemas distintos."""
+    a = tmp_path / "AdministrativeUnit_4thOrder_a.geojson"
+    b = tmp_path / "AdministrativeUnit_4thOrder_b.geojson"
+
+    completa = _capa_con_controles(8000)
+    completa.iloc[:4000].to_file(a, driver="GeoJSON")
+    completa.iloc[4000:].to_crs(25830).to_file(b, driver="GeoJSON")
+
+    unido = muni.leer_lote([a, b])
+
+    assert len(unido) == 8000
+    assert unido.crs.to_epsg() == 4326
 
 
 def test_finds_layers_inside_a_zip(tmp_path):
@@ -268,10 +349,10 @@ def test_finds_layers_inside_a_zip(tmp_path):
         z.writestr("subcarpeta/recintos_municipales.geojson", "{}")
         z.writestr("subcarpeta/leeme.txt", "no es una capa")
 
-    candidatos = muni.candidatos_en(origen)
+    lotes = muni.candidatos_en(origen)
 
-    assert len(candidatos) == 1
-    assert candidatos[0].name == "recintos_municipales.geojson"
+    assert len(lotes) == 1
+    assert lotes[0][0].name == "recintos_municipales.geojson"
 
 
 def test_polygon_detection():

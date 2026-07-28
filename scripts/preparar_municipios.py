@@ -19,7 +19,8 @@ por meter una dependencia externa en el camino crítico.
 
 Uso:
     python scripts/preparar_municipios.py --url "https://..."
-    python scripts/preparar_municipios.py --fichero descarga.gpkg
+    python scripts/preparar_municipios.py --fichero lineas_limite_gml.zip
+    python scripts/preparar_municipios.py --fichero ~/Downloads/lineas_limite_gml
     python scripts/preparar_municipios.py --candidatas     # prueba las conocidas
 """
 
@@ -170,10 +171,11 @@ def validar(gdf: gpd.GeoDataFrame) -> tuple[str, str | None]:
     return columna, provincia
 
 
-def preparar(origen: Path, destino: Path = DESTINO) -> dict:
+def preparar(origen: Path | list[Path], destino: Path = DESTINO) -> dict:
     """Lee, valida, simplifica y escribe. No escribe nada si la validación falla."""
-    log.info("Leyendo %s", origen)
-    gdf = gpd.read_file(origen)
+    lote = origen if isinstance(origen, list) else [Path(origen)]
+    log.info("Leyendo %s", ", ".join(f.name for f in lote))
+    gdf = leer_lote(lote)
 
     if gdf.crs is None:
         raise CapaNoValida("La capa no declara CRS; no se puede reproyectar con seguridad")
@@ -224,16 +226,53 @@ def preparar(origen: Path, destino: Path = DESTINO) -> dict:
 # Extensiones que geopandas sabe abrir directamente.
 EXTENSIONES = (".shp", ".gml", ".gpkg", ".geojson", ".json", ".kml", ".sqlite")
 
-# La descarga del IGN trae varias capas juntas. Solo una sirve: hacen falta
-# **recintos** (polígonos), no **líneas límite** (líneas). Con líneas no se
-# puede hacer point-in-polygon, así que se prefieren por nombre y, si el nombre
-# no lo aclara, se descarta por el tipo de geometría.
+# La descarga del IGN (BDLJE, esquema INSPIRE) trae dos familias de capas:
+#
+#   AdministrativeBoundary → líneas: fronteras, autonómicas, provinciales,
+#                            municipales. NO sirven: con líneas no hay
+#                            point-in-polygon.
+#   AdministrativeUnit     → superficies: país, comunidades, provincias,
+#                            municipios. La que vale es **4thOrder**.
+#
+# Se puntúa por nombre de fichero para no depender de que el usuario sepa cuál
+# es cuál, y el tipo de geometría lo confirma después.
 PREFERIDAS = ("recinto", "municipio", "muni", "adminunit", "administrativeunit")
-DESCARTADAS = ("linea", "línea", "limite", "límite", "boundary", "line")
+DESCARTADAS = ("boundary", "linea", "línea", "lineas", "líneas", "line")
+
+# Orden administrativo. 4thOrder son municipios; el resto son unidades más
+# grandes que fallarían el recuento pero conviene no probarlas siquiera.
+ORDEN_MUNICIPAL = ("4thorder", "4th_order", "4orden", "municipio", "recinto")
+ORDEN_SUPERIOR = ("1storder", "2ndorder", "3rdorder", "1st_order", "2nd_order", "3rd_order")
 
 
-def candidatos_en(ruta: Path) -> list[Path]:
-    """Ordena los ficheros de una carpeta o zip por probabilidad de servir."""
+def _familia(nombre: str) -> tuple[int, int]:
+    """Puntúa un nombre de fichero. Menor es mejor."""
+    n = nombre.lower()
+    es_unidad = any(p in n for p in PREFERIDAS)
+    es_linea = any(d in n for d in DESCARTADAS)
+    es_municipal = any(o in n for o in ORDEN_MUNICIPAL)
+    es_superior = any(o in n for o in ORDEN_SUPERIOR)
+
+    if es_linea:
+        return (3, 0)  # líneas: lo último
+    if es_unidad and es_municipal:
+        return (0, 0)  # AdministrativeUnit 4thOrder: justo lo que se busca
+    if es_superior:
+        return (2, 0)  # país, comunidades, provincias
+    if es_unidad:
+        return (1, 0)
+    return (1, 1)
+
+
+def candidatos_en(ruta: Path) -> list[list[Path]]:
+    """Agrupa los ficheros de una descarga en lotes que se leen juntos.
+
+    Devuelve **listas** de ficheros, no ficheros sueltos, porque el IGN parte
+    las capas grandes: "cada archivo .gml contiene como máximo 10000 entidades".
+    Los ~8.130 municipios pueden venir repartidos en varios ficheros y probarlos
+    de uno en uno haría fallar el recuento en todos. Se concatenan antes de
+    validar y el conjunto se valida como una sola capa.
+    """
     if ruta.is_file() and ruta.suffix.lower() == ".zip":
         destino = ruta.parent / f"{ruta.stem}_extraido"
         log.info("Descomprimiendo %s", ruta.name)
@@ -242,31 +281,57 @@ def candidatos_en(ruta: Path) -> list[Path]:
         ruta = destino
 
     if ruta.is_file():
-        return [ruta]
+        return [[ruta]]
 
-    ficheros = [
-        f for f in sorted(ruta.rglob("*")) if f.suffix.lower() in EXTENSIONES
-    ]
+    ficheros = [f for f in sorted(ruta.rglob("*")) if f.suffix.lower() in EXTENSIONES]
     if not ficheros:
         raise CapaNoValida(
             f"No hay ninguna capa reconocible en {ruta}. Extensiones buscadas: "
             f"{EXTENSIONES}"
         )
 
-    def prioridad(f: Path) -> tuple[int, int, str]:
-        nombre = f.name.lower()
-        preferida = any(p in nombre for p in PREFERIDAS)
-        descartada = any(d in nombre for d in DESCARTADAS)
-        # Menor es mejor: primero las que parecen recintos, al final las que
-        # parecen líneas.
-        return (0 if preferida and not descartada else 1 if not descartada else 2,
-                len(nombre), nombre)
+    # Se agrupan por puntuación: todos los ficheros de la misma familia se leen
+    # y concatenan juntos.
+    lotes: dict[tuple[int, int], list[Path]] = {}
+    for f in ficheros:
+        lotes.setdefault(_familia(f.name), []).append(f)
 
-    ordenados = sorted(ficheros, key=prioridad)
-    log.info("Capas encontradas (%d), en orden de prioridad:", len(ordenados))
-    for f in ordenados[:12]:
-        log.info("    %s", f.relative_to(ruta) if ruta in f.parents else f.name)
+    ordenados = [lotes[k] for k in sorted(lotes)]
+    log.info("Encontradas %d capas en %d familias:", len(ficheros), len(ordenados))
+    for lote in ordenados[:5]:
+        muestra = ", ".join(f.name for f in lote[:3])
+        extra = f" (+{len(lote) - 3} más)" if len(lote) > 3 else ""
+        log.info("    %d fichero(s): %s%s", len(lote), muestra, extra)
     return ordenados
+
+
+def leer_lote(lote: list[Path]) -> gpd.GeoDataFrame:
+    """Lee y concatena un lote de ficheros que forman una sola capa lógica."""
+    if len(lote) == 1:
+        return gpd.read_file(lote[0])
+
+    log.info("Concatenando %d ficheros de la misma capa", len(lote))
+    partes = []
+    for f in lote:
+        try:
+            trozo = gpd.read_file(f)
+        except Exception as exc:  # noqa: BLE001 — un fichero roto no tumba el lote
+            log.warning("    %s ilegible: %s", f.name, exc)
+            continue
+        if len(trozo):
+            partes.append(trozo)
+
+    if not partes:
+        raise CapaNoValida("Ningún fichero del lote se pudo leer")
+
+    # Todos los trozos deben venir en el mismo CRS; si no, se reproyectan al
+    # del primero antes de concatenar, o las geometrías quedarían mezcladas.
+    referencia = partes[0].crs
+    partes = [p if p.crs == referencia else p.to_crs(referencia) for p in partes]
+
+    import pandas as pd
+
+    return gpd.GeoDataFrame(pd.concat(partes, ignore_index=True), crs=referencia)
 
 
 def es_poligonal(gdf: gpd.GeoDataFrame) -> bool:
@@ -296,7 +361,10 @@ def main() -> None:
         if not ruta.exists():
             print(f"❌ No existe: {ruta}")
             sys.exit(1)
-        origenes = [(f"local · {c.name}", c) for c in candidatos_en(ruta)]
+        origenes = [
+            (f"local · {lote[0].name}" + (f" +{len(lote) - 1}" if len(lote) > 1 else ""), lote)
+            for lote in candidatos_en(ruta)
+        ]
     elif args.url:
         origenes = [("url indicada", args.url)]
     elif args.candidatas:
@@ -309,8 +377,8 @@ def main() -> None:
         for nombre, origen in origenes:
             try:
                 if isinstance(origen, str) and origen.startswith("http"):
-                    origen = descargar(origen, Path(tmp) / "capa.geojson")
-                resumen = preparar(Path(origen), destino)
+                    origen = [descargar(origen, Path(tmp) / "capa.geojson")]
+                resumen = preparar(origen, destino)
                 print(f"\n✅ {nombre}: {resumen['municipios']} municipios, {resumen['mb']} MB")
                 return
             except (CapaNoValida, httpx.HTTPError, OSError) as exc:
