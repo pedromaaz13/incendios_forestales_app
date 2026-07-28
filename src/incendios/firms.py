@@ -10,7 +10,7 @@ from __future__ import annotations
 import io
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pandas as pd
@@ -157,13 +157,15 @@ def fetch_hotspots(persist_raw: bool = True) -> pd.DataFrame:
     jobs = [(s, k, a) for s in FIRMS_SOURCES for k, a in AREAS.items()]
     frames: list[pd.DataFrame] = []
 
-    with httpx.Client(follow_redirects=True) as client:
-        with ThreadPoolExecutor(max_workers=6) as pool:
-            futures = [pool.submit(_fetch_one, client, s, k, a) for s, k, a in jobs]
-            for fut in futures:
-                raw = fut.result()
-                if not raw.empty:
-                    frames.append(_normalize(raw))
+    with (
+        httpx.Client(follow_redirects=True) as client,
+        ThreadPoolExecutor(max_workers=6) as pool,
+    ):
+        futures = [pool.submit(_fetch_one, client, s, k, a) for s, k, a in jobs]
+        for fut in futures:
+            raw = fut.result()
+            if not raw.empty:
+                frames.append(_normalize(raw))
 
     if not frames:
         log.error("Ninguna petición a FIRMS devolvió datos")
@@ -176,7 +178,7 @@ def fetch_hotspots(persist_raw: bool = True) -> pd.DataFrame:
     df = df.sort_values("acq_dt").reset_index(drop=True)
 
     if persist_raw:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         path = RAW / f"firms_{stamp}.parquet"
         df.to_parquet(path, index=False)
         log.info("Raw guardado en %s (%d filas)", path, len(df))

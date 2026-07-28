@@ -10,7 +10,7 @@ producir.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import geopandas as gpd
 import pandas as pd
@@ -19,7 +19,7 @@ from shapely.geometry import Point
 
 from incendios import build
 
-NOW = datetime(2026, 7, 27, 18, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 27, 18, 0, 0, tzinfo=UTC)
 TS = pd.Timestamp(NOW)
 
 

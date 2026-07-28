@@ -61,7 +61,7 @@ def main() -> None:
 
     gdf = gpd.GeoDataFrame(
         df.assign(name=lambda d: "auto_" + d.index.astype(str), kind="auto"),
-        geometry=[Point(xy) for xy in zip(df["lon"], df["lat"])],
+        geometry=[Point(xy) for xy in zip(df["lon"], df["lat"], strict=True)],
         crs=4326,
     )
     gdf.to_file(args.out, driver="GeoJSON")

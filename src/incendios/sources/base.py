@@ -97,7 +97,7 @@ class OfficialSource(abc.ABC):
         try:
             raw = self.fetch_raw(client)
             df = self.parse(raw)
-        except Exception as exc:  # noqa: BLE001 — aislamiento deliberado
+        except Exception as exc:
             # Una fuente caída no puede tumbar el pipeline. En agosto, la web
             # de alguna comunidad SIEMPRE está caída.
             log.error("Fuente %s falló: %s: %s", m.source_id, type(exc).__name__, exc)

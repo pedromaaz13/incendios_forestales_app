@@ -15,8 +15,8 @@ from __future__ import annotations
 import httpx
 import pandas as pd
 import pytest
-
 from conftest import load_json_fixture
+
 from incendios.sources.adapters import COMMON_STATUS_MAP, ArcGISSource, JsonApiSource
 from incendios.sources.base import (
     OFFICIAL_SCHEMA,
@@ -71,9 +71,11 @@ def test_http_500_returns_empty_without_raising(caplog):
     El `try` de `OfficialSource.collect` existe justo para esto y la
     especificación prohíbe quitarlo.
     """
-    with caplog.at_level("ERROR"):
-        with _client(_json_response({"error": "boom"}, status=500)) as client:
-            df = _source().collect(client)
+    with (
+        caplog.at_level("ERROR"),
+        _client(_json_response({"error": "boom"}, status=500)) as client,
+    ):
+        df = _source().collect(client)
 
     assert df.empty
     assert list(df.columns) == OFFICIAL_SCHEMA
@@ -89,7 +91,7 @@ def test_timeout_returns_empty_without_raising():
 
 
 def test_malformed_json_returns_empty_without_raising():
-    handler = lambda request: httpx.Response(200, text="<html>error</html>")  # noqa: E731
+    handler = lambda request: httpx.Response(200, text="<html>error</html>")
 
     with _client(handler) as client:
         assert _source().collect(client).empty
@@ -130,9 +132,8 @@ def test_coordinates_outside_spain_are_discarded(caplog):
     """
     payload = load_json_fixture("arcgis_framework_sample.json")
 
-    with caplog.at_level("WARNING"):
-        with _client(_json_response(payload)) as client:
-            df = _source().collect(client)
+    with caplog.at_level("WARNING"), _client(_json_response(payload)) as client:
+        df = _source().collect(client)
 
     assert len(df) == 3  # 4 features, una fuera de España
     assert df["latitude"].between(27, 44).all()
@@ -196,9 +197,8 @@ def test_renamed_field_warns_instead_of_silent_nulls(caplog):
         field_map={**FIELD_MAP, "status": "ESTADO_RENOMBRADO", "municipio": "MUNI_V2"},
     )
 
-    with caplog.at_level("WARNING"):
-        with _client(_json_response(payload)) as client:
-            df = fuente.collect(client)
+    with caplog.at_level("WARNING"), _client(_json_response(payload)) as client:
+        df = fuente.collect(client)
 
     assert df["municipio"].isna().all()
     assert any(

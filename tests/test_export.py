@@ -14,8 +14,8 @@ import json
 
 import pandas as pd
 import pytest
-
 from conftest import make_hotspots, to_gdf
+
 from incendios import cluster as cluster_mod
 from incendios import export as export_mod
 

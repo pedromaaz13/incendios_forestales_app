@@ -278,7 +278,7 @@ def explorar() -> None:
     _titulo("Explorando candidatas conocidas")
     print("Recuerda: que una URL responda NO significa que sea la buena.")
     print("Hay que mirar qué devuelve.\n")
-    for source_id, urls in CANDIDATAS.items():
+    for _source_id, urls in CANDIDATAS.items():
         for url in urls:
             sondear(url, source_id=None, guardar=False)
 

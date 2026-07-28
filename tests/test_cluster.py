@@ -14,8 +14,8 @@ from __future__ import annotations
 import geopandas as gpd
 import pandas as pd
 import pytest
-
 from conftest import make_hotspots, to_gdf
+
 from incendios import cluster as cluster_mod
 from incendios.config import ACTIVE_WINDOW_HOURS, CLUSTER
 

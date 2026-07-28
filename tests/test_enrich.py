@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import geopandas as gpd
 import pytest
+from conftest import make_fires
 from shapely.geometry import Polygon
 
-from conftest import make_fires
 from incendios import enrich as enrich_mod
 from incendios.config import CRS_WGS84
 

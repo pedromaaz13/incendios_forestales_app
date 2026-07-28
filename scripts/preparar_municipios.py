@@ -30,6 +30,7 @@ import argparse
 import logging
 import sys
 import tempfile
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -38,8 +39,8 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from incendios.config import CONFIG, CRS_WGS84  # noqa: E402
-from incendios.enrich import NAME_CANDIDATES, PROV_CANDIDATES  # noqa: E402
+from incendios.config import CONFIG, CRS_WGS84
+from incendios.enrich import NAME_CANDIDATES, PROV_CANDIDATES
 
 log = logging.getLogger("municipios")
 
@@ -74,34 +75,41 @@ CONTROL = [
 # Candidatas conocidas. NO están verificadas desde este entorno: la puerta de
 # validación existe justamente porque no se puede dar por buena una URL sin
 # comprobar lo que devuelve.
-CANDIDATAS = [
-    (
-        "IGN · WFS INSPIRE de unidades administrativas",
-        "https://www.ign.es/wfs-inspire/unidades-administrativas"
-        "?service=WFS&version=2.0.0&request=GetFeature"
-        "&typeName=au:AdministrativeUnit&outputFormat=application/json",
-    ),
-]
+_WFS_IGN = (
+    "https://www.ign.es/wfs-inspire/unidades-administrativas"
+    "?service=WFS&version=2.0.0&request=GetFeature"
+    "&typeName=au:AdministrativeUnit&outputFormat=application/json"
+)
+
+CANDIDATAS = [("IGN · WFS INSPIRE de unidades administrativas", _WFS_IGN)]
 
 
 class CapaNoValida(RuntimeError):
     """La capa descargada no pasa la puerta de validación."""
 
 
+def _sin_acentos(texto: str) -> str:
+    """Minúsculas y sin diacríticos, para comparar topónimos entre grafías."""
+    descompuesto = unicodedata.normalize("NFD", str(texto).lower())
+    return "".join(c for c in descompuesto if unicodedata.category(c) != "Mn")
+
+
 def descargar(url: str, destino: Path) -> Path:
     log.info("Descargando %s", url)
-    with httpx.Client(follow_redirects=True, timeout=180.0) as c:
-        with c.stream("GET", url) as r:
-            r.raise_for_status()
-            tipo = r.headers.get("content-type", "")
-            if "html" in tipo:
-                raise CapaNoValida(
-                    f"La URL devolvió HTML ({tipo}), no datos. Suele ser una "
-                    "página de error o un formulario de descarga."
-                )
-            with destino.open("wb") as f:
-                for trozo in r.iter_bytes():
-                    f.write(trozo)
+    with (
+        httpx.Client(follow_redirects=True, timeout=180.0) as c,
+        c.stream("GET", url) as r,
+    ):
+        r.raise_for_status()
+        tipo = r.headers.get("content-type", "")
+        if "html" in tipo:
+            raise CapaNoValida(
+                f"La URL devolvió HTML ({tipo}), no datos. Suele ser una "
+                "página de error o un formulario de descarga."
+            )
+        with destino.open("wb") as f:
+            for trozo in r.iter_bytes():
+                f.write(trozo)
 
     mb = destino.stat().st_size / 1024 / 1024
     log.info("Descargado: %.1f MB", mb)
@@ -119,10 +127,11 @@ def validar(gdf: gpd.GeoDataFrame) -> tuple[str, str | None]:
         )
 
     # 2 · columna de nombre reconocible
-    columna = next((c for c in NAME_CANDIDATES if c in gdf.columns), None)
+    columna = detectar_columna_nombre(gdf)
     if columna is None:
         raise CapaNoValida(
-            f"Sin columna de nombre reconocible. Buscadas: {NAME_CANDIDATES}. "
+            f"Sin columna de nombre reconocible. Buscadas: {NAME_CANDIDATES_AMPLIADO}, "
+            "y ninguna otra columna contiene algo que parezca topónimos. "
             f"Recibidas: {sorted(gdf.columns)[:25]}"
         )
     provincia = next((c for c in PROV_CANDIDATES if c in gdf.columns), None)
@@ -148,10 +157,12 @@ def validar(gdf: gpd.GeoDataFrame) -> tuple[str, str | None]:
             geometry=gpd.points_from_xy([lon], [lat]), crs=CRS_WGS84
         )
         encontrado = gpd.sjoin(punto, gdf[[columna, "geometry"]], predicate="within")
-        nombre = (
-            str(encontrado[columna].iloc[0]).lower() if len(encontrado) else "(ninguno)"
-        )
-        if esperado not in nombre:
+        nombre = str(encontrado[columna].iloc[0]) if len(encontrado) else "(ninguno)"
+        # El IGN publica el topónimo oficial, que en muchos casos es el de la
+        # lengua cooficial: "València", "A Coruña", "Donostia/San Sebastián".
+        # Comparar sin acentos evita marcar como error lo que es la grafía
+        # correcta.
+        if _sin_acentos(esperado) not in _sin_acentos(nombre):
             fallos.append(f"({lat}, {lon}) → '{nombre}', se esperaba '{esperado}'")
 
     # Se tolera un fallo: los cascos urbanos de algunos municipios están en
@@ -171,7 +182,11 @@ def validar(gdf: gpd.GeoDataFrame) -> tuple[str, str | None]:
     return columna, provincia
 
 
-def preparar(origen: Path | list[Path], destino: Path = DESTINO) -> dict:
+def preparar(
+    origen: Path | list[Path],
+    destino: Path = DESTINO,
+    lote_provincias: list[Path] | None = None,
+) -> dict:
     """Lee, valida, simplifica y escribe. No escribe nada si la validación falla."""
     lote = origen if isinstance(origen, list) else [Path(origen)]
     log.info("Leyendo %s", ", ".join(f.name for f in lote))
@@ -194,6 +209,12 @@ def preparar(origen: Path | list[Path], destino: Path = DESTINO) -> dict:
     gdf = gdf.to_crs(CRS_WGS84)
 
     columna, provincia = validar(gdf)
+
+    # INSPIRE no trae provincia en la capa municipal, pero sí en la de 3rdOrder.
+    if provincia is None and lote_provincias:
+        gdf = anadir_provincia(gdf, lote_provincias)
+        if "provincia" in gdf.columns and gdf["provincia"].notna().any():
+            provincia = "provincia"
 
     columnas = ["geometry", columna] + ([provincia] if provincia else [])
     slim = gdf[columnas].copy()
@@ -223,8 +244,91 @@ def preparar(origen: Path | list[Path], destino: Path = DESTINO) -> dict:
     return {"municipios": len(slim), "mb": round(mb, 1), "destino": str(destino)}
 
 
+def _parece_nombres(serie) -> bool:
+    """¿Los valores de esta columna parecen topónimos?
+
+    `text` es el nombre que INSPIRE da al campo del topónimo, pero también es
+    un nombre genérico que podría contener cualquier cosa. En vez de fiarse del
+    nombre de la columna se mira el contenido: cadenas, mayoritariamente
+    distintas entre sí y sin números sueltos. Un campo de códigos o una etiqueta
+    repetida ("Municipio" en todas las filas) no pasa.
+    """
+    valores = serie.dropna().astype(str)
+    # El umbral es bajo a propósito: la misma función se usa sobre la capa de
+    # provincias, que solo tiene 53 recintos. Exigir cientos de filas la
+    # descartaba y dejaba todos los incendios sin provincia.
+    if len(valores) < 20:
+        return False
+    distintos = valores.nunique() / len(valores)
+    con_letras = valores.str.contains(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", regex=True).mean()
+    return distintos > 0.5 and con_letras > 0.95
+
+
+def detectar_columna_nombre(gdf: gpd.GeoDataFrame) -> str | None:
+    """Busca la columna del topónimo, primero por nombre y luego por contenido."""
+    for c in NAME_CANDIDATES_AMPLIADO:
+        if c in gdf.columns and _parece_nombres(gdf[c]):
+            return c
+    # Último recurso: cualquier columna de texto cuyo contenido parezca nombres.
+    for c in gdf.columns:
+        if c != "geometry" and _parece_nombres(gdf[c]):
+            log.warning("Columna de nombre deducida por contenido: '%s'", c)
+            return c
+    return None
+
+
+def anadir_provincia(municipios: gpd.GeoDataFrame, lote_provincias: list[Path]) -> gpd.GeoDataFrame:
+    """Asigna provincia a cada municipio por punto interior.
+
+    El fichero de municipios de INSPIRE no trae provincia, pero el de 3rdOrder
+    sí es la capa de provincias. Se cruza por `representative_point` y no por
+    centroide: el centroide de un municipio con forma de herradura puede caer
+    fuera de su propio polígono, y entonces se asignaría la provincia vecina.
+    """
+    try:
+        provincias = leer_lote(lote_provincias).to_crs(CRS_WGS84)
+    except Exception as exc:
+        log.warning("No se pudo leer la capa de provincias: %s", exc)
+        return municipios
+
+    columna = detectar_columna_nombre(provincias)
+    if columna is None or not (40 <= len(provincias) <= 80):
+        log.warning(
+            "La capa de provincias no es reconocible (%d recintos, columna %s); "
+            "se omite la provincia",
+            len(provincias), columna,
+        )
+        return municipios
+
+    puntos = municipios.copy()
+    puntos["geometry"] = municipios.geometry.representative_point()
+
+    # Se renombra antes de cruzar: en INSPIRE las dos capas llaman `text` a su
+    # topónimo, y `sjoin` resolvería la colisión con sufijos `_left`/`_right`
+    # que dependen de la versión de geopandas.
+    derecha = provincias[[columna, "geometry"]].rename(columns={columna: "_provincia"})
+    cruce = gpd.sjoin(puntos, derecha, how="left", predicate="within")
+    cruce = cruce[~cruce.index.duplicated(keep="first")]
+
+    municipios = municipios.copy()
+    municipios["provincia"] = cruce["_provincia"].values
+    asignadas = int(municipios["provincia"].notna().sum())
+    log.info(
+        "Provincia asignada a %d/%d municipios (%d provincias distintas)",
+        asignadas, len(municipios), municipios["provincia"].nunique(),
+    )
+    return municipios
+
+
 # Extensiones que geopandas sabe abrir directamente.
 EXTENSIONES = (".shp", ".gml", ".gpkg", ".geojson", ".json", ".kml", ".sqlite")
+
+# Nombres de columna del topónimo. A los que busca `enrich.py` se añaden los del
+# esquema INSPIRE, donde el nombre vive en `text` —el contenido de
+# GeographicalName/spelling/SpellingOfName/text— y `LocalisedCharacterString`
+# solo lleva la etiqueta del tipo ("Municipio"), que es la misma en todas las
+# filas y por eso la comprobación de contenido la descarta.
+NAME_CANDIDATES_AMPLIADO = (*NAME_CANDIDATES, "text", "NOMBRE_ACTUAL", "nombre_actual")
 
 # La descarga del IGN (BDLJE, esquema INSPIRE) trae dos familias de capas:
 #
@@ -315,7 +419,7 @@ def leer_lote(lote: list[Path]) -> gpd.GeoDataFrame:
     for f in lote:
         try:
             trozo = gpd.read_file(f)
-        except Exception as exc:  # noqa: BLE001 — un fichero roto no tumba el lote
+        except Exception as exc:
             log.warning("    %s ilegible: %s", f.name, exc)
             continue
         if len(trozo):
@@ -355,15 +459,27 @@ def main() -> None:
     args = p.parse_args()
 
     destino = Path(args.destino)
+    provincias: list[Path] = []
 
     if args.fichero:
         ruta = Path(args.fichero).expanduser()
         if not ruta.exists():
             print(f"❌ No existe: {ruta}")
             sys.exit(1)
+        lotes = candidatos_en(ruta)
+        # La capa de provincias es AdministrativeUnit + 3rdOrder. Se busca
+        # aparte para poder cruzarla con los municipios y rellenar `provincia`.
+        provincias = [
+            f
+            for lote in lotes
+            for f in lote
+            if "administrativeunit" in f.name.lower() and "3rdorder" in f.name.lower()
+        ]
+        if provincias:
+            log.info("Capa de provincias localizada: %s", provincias[0].name)
         origenes = [
             (f"local · {lote[0].name}" + (f" +{len(lote) - 1}" if len(lote) > 1 else ""), lote)
-            for lote in candidatos_en(ruta)
+            for lote in lotes
         ]
     elif args.url:
         origenes = [("url indicada", args.url)]
@@ -378,7 +494,7 @@ def main() -> None:
             try:
                 if isinstance(origen, str) and origen.startswith("http"):
                     origen = [descargar(origen, Path(tmp) / "capa.geojson")]
-                resumen = preparar(origen, destino)
+                resumen = preparar(origen, destino, lote_provincias=provincias or None)
                 print(f"\n✅ {nombre}: {resumen['municipios']} municipios, {resumen['mb']} MB")
                 return
             except (CapaNoValida, httpx.HTTPError, OSError) as exc:
