@@ -15,6 +15,8 @@ import './estilos.css';
 import { cargarGeoJson, cargarIncidentes, cargarManifiesto, cargarSalud } from './datos';
 import {
   CAPA_AIRE,
+  CAPA_TRAFICO,
+  CAPA_TRAFICO_INCENDIO,
   CAPA_HOTSPOTS,
   CAPA_INCIDENTES,
   CAPA_PERIMETRO_EFFIS,
@@ -25,8 +27,10 @@ import {
   FUENTE_INCIDENTES,
   FUENTE_PERIMETROS,
   FUENTE_AIRE,
+  FUENTE_TRAFICO,
   FUENTE_VIENTO,
   anadirCapaAire,
+  anadirCapasTrafico,
   anadirCapaHotspots,
   anadirCapaViento,
   anadirCapasIncidentes,
@@ -75,7 +79,7 @@ const estado: Estado = {
   salud: null,
   incidentes: null,
   seleccionado: null,
-  capas: { hotspots: true, perimetros: false, viento: false, aire: false },
+  capas: { hotspots: true, perimetros: false, viento: false, aire: false, trafico: false },
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
 };
 
@@ -301,6 +305,7 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     perimetros: () => mapa.getSource(FUENTE_PERIMETROS),
     viento: () => mapa.getSource(FUENTE_VIENTO),
     aire: () => mapa.getSource(FUENTE_AIRE),
+    trafico: () => mapa.getSource(FUENTE_TRAFICO),
   }[capa];
   if (ya?.()) return;
 
@@ -331,6 +336,13 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     mapa.addSource(FUENTE_AIRE, { type: 'geojson', data: datos });
     anadirCapaAire(mapa);
   }
+
+  if (capa === 'trafico') {
+    const datos = await cargarGeoJson('trafico.geojson');
+    if (!datos) return;
+    mapa.addSource(FUENTE_TRAFICO, { type: 'geojson', data: datos });
+    anadirCapasTrafico(mapa);
+  }
 }
 
 function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
@@ -341,6 +353,7 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     perimetros: [CAPA_PERIMETRO_EFFIS, CAPA_PERIMETRO_ESTIMADO],
     viento: [CAPA_VIENTO],
     aire: [CAPA_AIRE],
+    trafico: [CAPA_TRAFICO, CAPA_TRAFICO_INCENDIO],
   };
 
   const aplicar = () => {
@@ -563,6 +576,7 @@ function construirConmutadores(mapa: MapaGL): void {
     ['perimetros', 'Perímetros'],
     ['viento', 'Viento'],
     ['aire', 'Calidad del aire'],
+    ['trafico', 'Carreteras cortadas'],
   ];
 
   nodo.innerHTML = capas
@@ -608,6 +622,18 @@ function pintarLeyenda(): void {
       estado.capas.viento
         ? `<div class="leyenda__fila leyenda__fila--texto">
              Las flechas apuntan <b>hacia donde sopla</b> el viento, no de dónde viene
+           </div>`
+        : ''
+    }
+    ${
+      estado.capas.trafico
+        ? `<div class="leyenda__fila">
+             <span class="leyenda__muestra" style="background:#ffe08a;border:2px solid #c81e1e"></span>
+             Corte <b>por incendio</b>, según la DGT
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra" style="background:#7d9199"></span>
+             Otros cortes de carretera
            </div>`
         : ''
     }

@@ -51,7 +51,15 @@ def salidas(tmp_path, monkeypatch):
 
 @pytest.fixture
 def firms_simulado(monkeypatch):
-    """Sustituye la ingesta por hotspots sintéticos, sin tocar la red."""
+    """Sustituye la ingesta por hotspots sintéticos, sin tocar la red.
+
+    Las marcas de tiempo se desplazan al instante real de ejecución. El `NOW`
+    congelado de `conftest` sirve para probar funciones puras, pero el pipeline
+    compara contra `datetime.now()`: con fechas fijas, el fixture envejecía solo
+    y al pasar de las 24 h la regla de "cluster satelital sin detecciones
+    recientes no se publica" lo filtraba entero. La prueba pasaba el día que se
+    escribió y fallaba al siguiente.
+    """
     entrada = pd.concat(
         [
             make_hotspots(40.25, -6.60, n=40, spread_deg=0.008, frp=30.0, hours_ago=[2, 3]),
@@ -65,13 +73,25 @@ def firms_simulado(monkeypatch):
         ],
         ignore_index=True,
     )
+
+    from conftest import NOW as CONGELADO
+
+    desplazamiento = pd.Timestamp.now(tz="UTC").floor("min") - CONGELADO
+    entrada["acq_dt"] = entrada["acq_dt"] + desplazamiento
+
     monkeypatch.setattr(pipeline.firms, "fetch_hotspots", lambda **_: entrada)
     return entrada
 
 
 def _ejecutar(salidas) -> dict:
-    # `con_viento=False`: Open-Meteo es red, y esta prueba no toca la red.
-    return pipeline.run(persist_raw=False, con_viento=False, outputs=salidas)
+    # Todas las capas de contexto salen por red y esta prueba no la toca.
+    return pipeline.run(
+        persist_raw=False,
+        con_viento=False,
+        con_aire=False,
+        con_trafico=False,
+        outputs=salidas,
+    )
 
 
 # --- artefactos --------------------------------------------------------------
@@ -347,3 +367,17 @@ def test_verifier_agrees_with_the_published_manifest(firms_simulado, salidas, mo
     informe = verif.verificar()
 
     assert informe.fallos == 0, [t for m, t in informe.lineas if m == verif.FALLO]
+
+
+def test_the_fixture_does_not_go_stale_with_the_calendar(firms_simulado, salidas):
+    """Regresión: el fixture usaba marcas de tiempo fijas y el pipeline compara
+    contra la hora real, así que al pasar de medianoche los datos superaban las
+    24 h y la regla de "cluster satelital sin detecciones recientes no se
+    publica" los filtraba todos. La prueba pasaba el día que se escribió y
+    fallaba al siguiente, con 0 incidentes y sin explicar por qué.
+    """
+    manifest = _ejecutar(salidas)
+
+    assert manifest["counts"]["incidents_total"] > 0
+    # El dato más viejo del fixture son 6 h; con margen para la ejecución.
+    assert manifest["worst_data_age_seconds"] < 8 * 3600
