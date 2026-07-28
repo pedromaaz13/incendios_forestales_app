@@ -11,8 +11,8 @@ from __future__ import annotations
 import httpx
 import pandas as pd
 import pytest
-
 from conftest import read_fixture
+
 from incendios import firms
 
 
@@ -31,9 +31,8 @@ def test_detects_non_csv_response(caplog):
     """RF-P-01: cuota agotada llega como 200 + texto plano. Vacío, sin lanzar."""
     body = read_fixture("firms_quota_exhausted.txt")
 
-    with caplog.at_level("WARNING"):
-        with _client(_csv_response(body)) as client:
-            df = firms._fetch_one(client, "VIIRS_NOAA20_NRT", "peninsula", "-9,35,4,44")
+    with caplog.at_level("WARNING"), _client(_csv_response(body)) as client:
+        df = firms._fetch_one(client, "VIIRS_NOAA20_NRT", "peninsula", "-9,35,4,44")
 
     assert df.empty
     assert any("no-CSV" in r.getMessage() for r in caplog.records)
@@ -56,11 +55,10 @@ def test_empty_body_is_not_confused_with_zero_fires():
 
 def test_http_error_returns_empty_without_raising(caplog):
     """Un 500 de FIRMS no puede tumbar la ingesta de los otros tres sensores."""
-    handler = lambda request: httpx.Response(500, text="boom")  # noqa: E731
+    handler = lambda request: httpx.Response(500, text="boom")
 
-    with caplog.at_level("WARNING"):
-        with _client(handler) as client:
-            df = firms._fetch_one(client, "VIIRS_NOAA21_NRT", "peninsula", "-9,35,4,44")
+    with caplog.at_level("WARNING"), _client(handler) as client:
+        df = firms._fetch_one(client, "VIIRS_NOAA21_NRT", "peninsula", "-9,35,4,44")
 
     assert df.empty
     assert any("falló" in r.getMessage() for r in caplog.records)
@@ -177,7 +175,7 @@ def test_normalizes_modis_schema():
 def test_categorical_confidence_maps_to_percentage():
     out = firms._normalize(_read_csv_fixture("firms_viirs_snpp.csv"))
 
-    conf = dict(zip(out["confidence_raw"], out["confidence_pct"]))
+    conf = dict(zip(out["confidence_raw"], out["confidence_pct"], strict=True))
     assert conf["l"] == 20.0
     assert conf["n"] == 60.0
     assert conf["h"] == 90.0

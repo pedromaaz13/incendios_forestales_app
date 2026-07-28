@@ -184,9 +184,8 @@ def test_abort_names_the_failing_step(caplog):
     def roto():
         raise ValueError("boom")
 
-    with caplog.at_level("ERROR"):
-        with pytest.raises(ValueError):
-            publish.publish_atomically([("sources.json", roto)])
+    with caplog.at_level("ERROR"), pytest.raises(ValueError):
+        publish.publish_atomically([("sources.json", roto)])
 
     mensaje = " ".join(r.getMessage() for r in caplog.records)
     assert "sources.json" in mensaje

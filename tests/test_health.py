@@ -8,7 +8,7 @@ desinformación; la segunda es lo que este fichero garantiza que se publique.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 
@@ -23,7 +23,7 @@ from incendios.health import (
     SourceHealth,
 )
 
-NOW = datetime(2026, 7, 27, 18, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 7, 27, 18, 0, 0, tzinfo=UTC)
 
 
 def _fuente(**kwargs) -> SourceHealth:

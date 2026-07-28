@@ -24,7 +24,7 @@ import json
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import geopandas as gpd
 import pandas as pd
@@ -67,7 +67,7 @@ def run(
 ) -> dict:
     """Ejecuta el pipeline completo y devuelve el manifiesto publicado."""
     outputs = outputs or OUTPUTS
-    inicio = datetime.now(timezone.utc)
+    inicio = datetime.now(UTC)
     t0 = time.perf_counter()
 
     # --- ingesta ------------------------------------------------------------
@@ -136,10 +136,10 @@ def run(
         suppressed_lowconf=suprimidos_baja,
         deduplicated=duplicados,
         pipeline_started_at=inicio,
-        now=datetime.now(timezone.utc),
+        now=datetime.now(UTC),
     )
     degradado, motivo = informe.degraded(
-        datetime.now(timezone.utc), manifest["worst_data_age_seconds"]
+        datetime.now(UTC), manifest["worst_data_age_seconds"]
     )
     if degradado:
         manifest["degraded"] = True
@@ -181,7 +181,7 @@ def _recoger_oficiales() -> pd.DataFrame:
     """
     try:
         return collect_all(only_configured=True)
-    except Exception as exc:  # noqa: BLE001 — aislamiento deliberado
+    except Exception as exc:
         log.error("Fallo recogiendo fuentes oficiales: %s: %s", type(exc).__name__, exc)
         return OfficialSource.empty()
 

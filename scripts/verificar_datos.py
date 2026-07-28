@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import geopandas as gpd
@@ -24,8 +24,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from incendios.config import OUTPUTS  # noqa: E402
-from incendios.validate import SPAIN_BBOX, check  # noqa: E402
+from incendios.config import OUTPUTS
+from incendios.validate import SPAIN_BBOX, check
 
 OK = "✅"
 AVISO = "⚠️"
@@ -53,7 +53,7 @@ class Informe:
 
 def verificar() -> Informe:
     inf = Informe()
-    ahora = datetime.now(timezone.utc)
+    ahora = datetime.now(UTC)
 
     # --- el manifiesto existe y es coherente consigo mismo ------------------
 

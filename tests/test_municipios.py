@@ -102,9 +102,15 @@ def test_rejects_an_absurdly_large_layer():
 # --- 2 · esquema -------------------------------------------------------------
 
 
-def test_rejects_a_layer_without_a_name_column():
-    """Sin nombre no hay geocoding: la capa no sirve para nada."""
-    gdf = _capa_con_controles().rename(columns={"NAMEUNIT": "COLUMNA_RARA"})
+def test_rejects_a_layer_without_any_name_column():
+    """Sin nombre no hay geocoding: la capa no sirve para nada.
+
+    Con solo códigos numéricos no hay nada que se parezca a un topónimo, ni
+    por nombre de columna ni por contenido.
+    """
+    gdf = _capa_con_controles()
+    gdf = gdf.drop(columns=["NAMEUNIT"])
+    gdf["codigo"] = range(len(gdf))
 
     with pytest.raises(muni.CapaNoValida, match="nombre reconocible"):
         muni.validar(gdf)
@@ -112,12 +118,130 @@ def test_rejects_a_layer_without_a_name_column():
 
 def test_error_lists_the_columns_it_did_receive():
     """El mensaje tiene que permitir arreglarlo sin abrir el fichero a mano."""
-    gdf = _capa_con_controles().rename(columns={"NAMEUNIT": "MUNI_V2"})
+    gdf = _capa_con_controles()
+    gdf = gdf.drop(columns=["NAMEUNIT"])
+    gdf["codigo_ine"] = range(len(gdf))
 
     with pytest.raises(muni.CapaNoValida) as exc:
         muni.validar(gdf)
 
-    assert "MUNI_V2" in str(exc.value)
+    assert "codigo_ine" in str(exc.value)
+
+
+# --- detección de la columna del topónimo ------------------------------------
+
+
+def test_detects_the_inspire_text_column():
+    """El GML del IGN guarda el topónimo en `text`, no en NAMEUNIT.
+
+    Es el esquema INSPIRE: GeographicalName/spelling/SpellingOfName/text, que
+    GDAL aplana a una columna llamada `text` a secas.
+    """
+    gdf = _capa_con_controles().rename(columns={"NAMEUNIT": "text"})
+
+    columna, _ = muni.validar(gdf)
+
+    assert columna == "text"
+
+
+def test_ignores_a_repeated_label_column():
+    """El GML trae `LocalisedCharacterString` con el valor "Municipio" repetido
+    en las 8.220 filas. Es una etiqueta de tipo, no un nombre: si se eligiera,
+    todos los incendios saldrían llamándose "Municipio"."""
+    gdf = _capa_con_controles()
+    gdf["LocalisedCharacterString"] = "Municipio"
+
+    columna, _ = muni.validar(gdf)
+
+    assert columna == "NAMEUNIT"
+
+
+def test_ignores_a_column_of_codes():
+    gdf = _capa_con_controles()
+    gdf["nationalCode"] = [str(34172626145 + i) for i in range(len(gdf))]
+
+    columna, _ = muni.validar(gdf)
+
+    assert columna == "NAMEUNIT"
+
+
+def test_name_detection_needs_enough_rows_but_not_hundreds():
+    """El mismo detector se usa sobre la capa de provincias, que solo tiene 53
+    recintos. Exigir cientos de filas la descartaba y dejaba todos los
+    incendios sin provincia."""
+    import pandas as pd
+
+    provincias = pd.Series([f"Provincia {i}" for i in range(53)])
+    dos_filas = pd.Series(["Madrid", "Sevilla"])
+
+    assert muni._parece_nombres(provincias)
+    assert not muni._parece_nombres(dos_filas)
+
+
+# --- comparación de topónimos entre grafías ----------------------------------
+
+
+def test_control_sampling_accepts_official_spellings():
+    """El IGN publica el topónimo oficial, que a menudo es el de la lengua
+    cooficial: "València", "A Coruña", "Donostia/San Sebastián". Compararlos
+    con acentos marcaría como error lo que es la grafía correcta."""
+    assert muni._sin_acentos("València") == "valencia"
+    assert muni._sin_acentos("A Coruña") == "a coruna"
+    assert "valencia" in muni._sin_acentos("València")
+
+
+# --- provincia desde la capa de 3rdOrder -------------------------------------
+
+
+def test_province_is_joined_from_the_third_order_layer(tmp_path):
+    """El GML municipal de INSPIRE no trae provincia, pero el de 3rdOrder es
+    justamente la capa de provincias."""
+    from shapely.geometry import box
+
+    municipios = _capa_con_controles()
+    provincias_path = tmp_path / "au_AdministrativeUnit_3rdOrder0.geojson"
+
+    # 53 provincias que cubren el mismo bbox que los municipios.
+    oeste, sur, este, norte = municipios.total_bounds
+    ancho = (este - oeste) / 53
+    gpd.GeoDataFrame(
+        {
+            "text": [f"Provincia {i}" for i in range(53)],
+            "geometry": [
+                box(oeste + i * ancho, sur, oeste + (i + 1) * ancho, norte)
+                for i in range(53)
+            ],
+        },
+        crs=4326,
+    ).to_file(provincias_path, driver="GeoJSON")
+
+    con_provincia = muni.anadir_provincia(municipios, [provincias_path])
+
+    assert "provincia" in con_provincia.columns
+    assert con_provincia["provincia"].notna().sum() > len(municipios) * 0.9
+
+
+def test_province_join_uses_an_interior_point(tmp_path):
+    """Se cruza por `representative_point` y no por centroide: el centroide de
+    un municipio con forma de herradura cae fuera de su propio polígono, y
+    entonces se le asignaría la provincia del vecino."""
+    from shapely.geometry import Polygon
+
+    # Herradura: el centroide cae en el hueco.
+    herradura = Polygon(
+        [(0, 40), (3, 40), (3, 43), (2, 43), (2, 41), (1, 41), (1, 43), (0, 43)]
+    )
+    assert not herradura.contains(herradura.centroid)
+    assert herradura.contains(herradura.representative_point())
+
+
+def test_missing_province_layer_is_not_fatal():
+    """La provincia es un extra: sin ella el municipio sigue sirviendo."""
+    municipios = _capa_con_controles()
+
+    igual = muni.anadir_provincia(municipios, [Path("/no/existe.geojson")])
+
+    assert len(igual) == len(municipios)
 
 
 # --- 3 · cobertura -----------------------------------------------------------
@@ -125,7 +249,7 @@ def test_error_lists_the_columns_it_did_receive():
 
 def test_rejects_a_layer_from_another_country():
     """Francia tiene ~35.000 comunas; recortado a 8.000 pasaría el recuento."""
-    with pytest.raises(muni.CapaNoValida, match="se sale de España|recortada"):
+    with pytest.raises(muni.CapaNoValida, match=r"se sale de España|recortada"):
         muni.validar(_capa(8000, bbox=(-5.0, 42.5, 8.0, 51.0)))
 
 
@@ -189,9 +313,9 @@ def test_writes_and_simplifies_a_valid_layer(tmp_path):
 def test_output_feeds_enrich(tmp_path):
     """La prueba que de verdad importa: la capa preparada tiene que servirle a
     `enrich.py` tal cual, sin adaptadores por medio."""
-    from incendios import enrich
-
     from conftest import make_fires
+
+    from incendios import enrich
 
     destino = tmp_path / "municipios.geojson"
     origen = tmp_path / "buena.geojson"

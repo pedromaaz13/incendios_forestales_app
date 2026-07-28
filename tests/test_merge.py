@@ -15,8 +15,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-
 from conftest import make_fires, make_official
+
 from incendios import merge
 from incendios.merge import MATCH_MAX_M, MATCH_SLACK_M, MATCH_WINDOW_HOURS
 

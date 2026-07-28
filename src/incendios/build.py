@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import geopandas as gpd
 import pandas as pd
@@ -93,7 +93,7 @@ def build_manifest(
     now: datetime | None = None,
 ) -> dict:
     """Manifiesto de la sección 4.1."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
 
     edades = data_age_seconds(hotspots, official, now)
     peor = max(edades.values()) if edades else None
@@ -128,10 +128,10 @@ def build_manifest(
         "data_age_seconds": edades,
         "worst_data_age_seconds": peor,
         "counts": {
-            "incidents_total": int(len(incidents)),
+            "incidents_total": len(incidents),
             "incidents_satellite_confirmed": confirmados,
             "incidents_official_only": solo_oficial,
-            "hotspots_24h": int(len(hotspots)),
+            "hotspots_24h": len(hotspots),
             "hotspots_suppressed_industrial": int(suppressed_industrial),
             "hotspots_suppressed_lowconf": int(suppressed_lowconf),
             # Fuera del ejemplo de 4.1, pero necesario: sin separarlo, los

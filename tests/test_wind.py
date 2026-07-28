@@ -125,7 +125,7 @@ def test_missing_gusts_is_none_not_zero():
 
 def test_fetch_returns_geodataframe():
     payload = [_bloque() for _ in wind.GRID_POINTS]
-    handler = lambda request: httpx.Response(200, json=payload)  # noqa: E731
+    handler = lambda request: httpx.Response(200, json=payload)
 
     with _client(handler) as client:
         gdf = wind.fetch(client)
@@ -141,11 +141,10 @@ def test_fetch_failure_returns_empty_without_raising(caplog):
     Abortar la publicación de incendios porque no responde un servicio
     meteorológico gratuito sería desproporcionado.
     """
-    handler = lambda request: httpx.Response(503, text="unavailable")  # noqa: E731
+    handler = lambda request: httpx.Response(503, text="unavailable")
 
-    with caplog.at_level("ERROR"):
-        with _client(handler) as client:
-            gdf = wind.fetch(client)
+    with caplog.at_level("ERROR"), _client(handler) as client:
+        gdf = wind.fetch(client)
 
     assert gdf.empty
     assert list(gdf.columns)[:-1] == wind.WIND_SCHEMA
@@ -153,7 +152,7 @@ def test_fetch_failure_returns_empty_without_raising(caplog):
 
 
 def test_fetch_malformed_json_returns_empty():
-    handler = lambda request: httpx.Response(200, text="<html>nope</html>")  # noqa: E731
+    handler = lambda request: httpx.Response(200, text="<html>nope</html>")
 
     with _client(handler) as client:
         assert wind.fetch(client).empty

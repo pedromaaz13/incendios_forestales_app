@@ -15,8 +15,8 @@ from __future__ import annotations
 import geopandas as gpd
 import pandas as pd
 import pytest
-
 from conftest import REFINERIA_PUERTOLLANO, make_hotspots, to_gdf
+
 from incendios import clean as clean_mod
 from incendios.config import EXCLUSION_BUFFER_M
 

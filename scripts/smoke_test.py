@@ -18,11 +18,11 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from incendios import clean as clean_mod  # noqa: E402
-from incendios import cluster as cluster_mod  # noqa: E402
-from incendios import enrich as enrich_mod  # noqa: E402
-from incendios import export as export_mod  # noqa: E402
-from incendios.pipeline import setup_logging  # noqa: E402
+from incendios import clean as clean_mod
+from incendios import cluster as cluster_mod
+from incendios import enrich as enrich_mod
+from incendios import export as export_mod
+from incendios.pipeline import setup_logging
 
 rng = np.random.default_rng(42)
 NOW = pd.Timestamp.now(tz="UTC").floor("h")

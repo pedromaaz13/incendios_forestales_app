@@ -2,7 +2,7 @@
 
 Para qué: el frontend necesita datos para poder mirarse, y los reales exigen
 `FIRMS_MAP_KEY` y salida a internet. Esto produce artefactos con el contrato
-exacto de las secciones 4.1–4.3 a partir de datos sintéticos, de modo que
+exacto de las secciones 4.1-4.3 a partir de datos sintéticos, de modo que
 `npm run dev` funcione en un portátil recién clonado.
 
 **No son datos reales y el manifiesto lo dice.** `demo: true` viaja en
@@ -25,14 +25,14 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from incendios import build as build_mod  # noqa: E402
-from incendios import clean as clean_mod  # noqa: E402
-from incendios import cluster as cluster_mod  # noqa: E402
-from incendios import merge as merge_mod  # noqa: E402
-from incendios import validate as validate_mod  # noqa: E402
-from incendios import wind as wind_mod  # noqa: E402
-from incendios.health import HealthReport, SourceHealth  # noqa: E402
-from incendios.pipeline import setup_logging  # noqa: E402
+from incendios import build as build_mod
+from incendios import clean as clean_mod
+from incendios import cluster as cluster_mod
+from incendios import merge as merge_mod
+from incendios import validate as validate_mod
+from incendios import wind as wind_mod
+from incendios.health import HealthReport, SourceHealth
+from incendios.pipeline import setup_logging
 
 DESTINO = Path(__file__).resolve().parents[1] / "web" / "public" / "live"
 

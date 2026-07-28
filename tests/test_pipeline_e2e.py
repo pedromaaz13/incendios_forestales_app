@@ -15,8 +15,8 @@ import json
 
 import pandas as pd
 import pytest
-
 from conftest import make_hotspots
+
 from incendios import pipeline
 from incendios.config import Outputs
 

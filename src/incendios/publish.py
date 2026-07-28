@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ class RunStats:
         return cls(
             hotspots=int(hotspots),
             incidents=int(incidents),
-            at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
 
 

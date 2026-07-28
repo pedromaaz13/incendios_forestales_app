@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pandas as pd
 
@@ -130,7 +130,7 @@ class HealthReport:
         }
 
     def write(self, path, now: datetime | None = None) -> dict:
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         payload = self.to_dict(now)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -148,8 +148,8 @@ def _iso(value) -> str | None:
     if isinstance(value, pd.Timestamp):
         value = value.to_pydatetime()
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def from_official_sources(registry, results: dict[str, pd.DataFrame], now: datetime | None = None) -> list[SourceHealth]:
@@ -159,7 +159,7 @@ def from_official_sources(registry, results: dict[str, pd.DataFrame], now: datet
     fallado, es que todavía no existe. Mezclarlas haría que el panel pareciera
     roto cuando solo está incompleto.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     salida: list[SourceHealth] = []
 
     for src in registry:

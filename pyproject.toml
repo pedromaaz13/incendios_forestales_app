@@ -1,3 +1,36 @@
+[tool.ruff]
+# Sin esta sección cada versión de ruff aplica su propio conjunto de reglas por
+# defecto, y CI —que instala la última— empieza a fallar de un día para otro sin
+# que nadie haya tocado el código. El lint tiene que ser reproducible.
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # orden de imports
+    "UP",   # modernización de sintaxis
+    "B",    # bugbear: fallos reales, no estilo
+    "SIM",  # simplificaciones
+    "RUF",  # reglas propias de ruff
+]
+ignore = [
+    "E501",    # longitud de línea: la controla el formateador
+    # Los `except Exception` de este repo son deliberados y están documentados:
+    # aislar el fallo de una fuente para que no tumbe el pipeline es un
+    # requisito explícito (RF-P-03), no un descuido.
+    "BLE001",
+    # `dict(...)` se usa a propósito en las tablas de datos de demostración,
+    # donde la forma de llamada se lee mejor que las llaves.
+    "C408",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Los tests usan lambdas de un solo uso como manejadores de httpx: convertirlas
+# en `def` con nombre alarga sin aclarar nada.
+"tests/*" = ["E731"]
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]

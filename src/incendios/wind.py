@@ -115,7 +115,9 @@ def parse(payload: list[dict] | dict, points=GRID_POINTS) -> pd.DataFrame:
         payload = [payload]
 
     filas = []
-    for punto, bloque in zip(points, payload):
+    # `strict=False`: si Open-Meteo devuelve menos bloques que puntos, se
+    # ignoran los que faltan. El viento es contexto, no puede tumbar nada.
+    for punto, bloque in zip(points, payload, strict=False):
         actual = bloque.get("current") or {}
         direccion = actual.get("wind_direction_10m")
         if direccion is None:
@@ -173,7 +175,7 @@ def fetch(client: httpx.Client | None = None, points=GRID_POINTS) -> gpd.GeoData
         df = parse(r.json(), points)
         log.info("Viento: %d/%d puntos", len(df), len(points))
         return to_gdf(df)
-    except Exception as exc:  # noqa: BLE001 — el viento es contexto, no bloquea
+    except Exception as exc:
         log.error("Viento no disponible: %s: %s", type(exc).__name__, exc)
         return to_gdf(pd.DataFrame(columns=WIND_SCHEMA))
     finally:
