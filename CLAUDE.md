@@ -72,6 +72,48 @@ duda entre mostrar un dato incierto o no mostrarlo, no se muestra. El lenguaje d
 la interfaz usa "estimación" y "detección", nunca verbos de certeza. El aviso de
 que no sustituye al 112 es permanente y no se oculta en ninguna resolución.
 
+## Proceso de trabajo
+
+**Plan antes de código.** Ante cualquier tarea de más de un fichero, primero
+devuelve el plan: qué ficheros vas a crear o tocar y qué hace cada uno. Espera
+confirmación.
+
+**Una rama por hito.** `hito-2-frontend`, `hito-3-fuentes`. No trabajes sobre
+`main`.
+
+**No toques código que ya funciona** salvo que la tarea lo pida o un test revele
+un bug real. Si encuentras uno, dilo antes de arreglarlo.
+
+**Alcance cerrado.** Haz lo que pide la tarea. Si ves algo mejorable fuera de
+alcance, anótalo al final de tu respuesta en vez de implementarlo.
+
+**Para y pregunta** cuando falte un dato que no puedes deducir: endpoints,
+claves, credenciales, decisiones de producto. Nunca inventes un valor para
+desbloquearte.
+
+## Pruebas
+
+`pytest` desde la raíz. La configuración vive en `pyproject.toml`, que ya añade
+`src/` y `tests/` al path: no hace falta `PYTHONPATH`.
+
+```
+pytest                  # suite completa
+pytest --cov            # con cobertura, falla por debajo del 85 % (RNF-10)
+pytest tests/test_merge.py -q
+```
+
+Marcadores en uso:
+
+- `xfail(strict=True)` — el comportamiento que exige la especificación y que el
+  código **todavía no cumple**. Si alguien lo arregla, el test se pone verde y
+  `strict` obliga a quitar el marcador. No es deuda escondida: es deuda que
+  avisa.
+- `skip` — requisito de un hito posterior o dependencia externa que no está en
+  el repo (capa del IGN, endpoints autonómicos). El motivo cita siempre el ID
+  del requisito.
+
+Prueba de humo sin red: `PYTHONPATH=src python scripts/smoke_test.py`
+
 ## Convenciones
 
 - Python 3.12, `ruff` para formato y lint.

@@ -1,0 +1,29 @@
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# `src` para el paquete y `tests` para poder importar las fábricas de conftest
+# desde los ficheros de prueba sin convertir tests/ en un paquete instalable.
+pythonpath = ["src", "tests"]
+addopts = "-q --strict-markers"
+filterwarnings = [
+    "error::DeprecationWarning:incendios.*",
+]
+
+[tool.coverage.run]
+source = ["incendios"]
+branch = true
+# pipeline.py es el `main`: argparse y logging. Se ejercita en la prueba de humo
+# y en el propio cron, no aporta nada medirlo aquí.
+omit = ["*/incendios/pipeline.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# RNF-10. Vive aquí y no en addopts para que aplique igual desde CI que en local.
+fail_under = 85
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]

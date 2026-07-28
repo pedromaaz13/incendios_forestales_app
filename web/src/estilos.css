@@ -1,0 +1,765 @@
+/* Lenguaje visual del visor.
+ *
+ * La paleta viene del prototipo y se conserva: fondo frío y desaturado para que
+ * la única cosa cálida de la pantalla sean los incendios. La rampa de brasa no
+ * es decorativa, cada parada corresponde a un umbral de FRP.
+ *
+ * Regla de contraste (RNF-12): la rampa mantiene ≥ 3:1 contra el mapa base
+ * claro y contra el oscuro, comprobado con las cuatro paradas.
+ */
+
+:root {
+  --ground: #0f1619;
+  --panel: rgba(19, 28, 33, 0.92);
+  --panel-solido: #131c21;
+  --line: #26343b;
+  --ink: #dce6e9;
+  --muted: #7d9199;
+  --cool: #4e8fa8;
+
+  /* Rampa de brasa · baja · media · alta · extrema */
+  --e1: #ffe08a;
+  --e2: #ffa23a;
+  --e3: #f05a28;
+  --e4: #c81e1e;
+
+  /* Semáforo de latencia y de estado de fuente (RF-F-05, RF-F-06) */
+  --ok: #4ac97e;
+  --warn: #ffb020;
+  --bad: #ff5a4d;
+
+  --radius: 4px;
+  --cabecera-alto: 68px;
+  --aviso-alto: 34px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* `[hidden]` solo vale `display:none` en la hoja del navegador, así que
+ * cualquier regla de autor con `display` lo anula sin avisar. Pasó con el
+ * mensaje de "sin WebGL", que tapaba el mapa siempre. Se blinda aquí. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  height: 100%;
+}
+
+/* Columna flexible en lugar de alturas con calc().
+ *
+ * La versión anterior restaba a mano cabecera, banda y aviso legal. Bastaba con
+ * que la banda ocupara dos líneas —cosa que pasa siempre a 390 px— para que la
+ * cuenta fallara y el aviso legal quedara fuera de pantalla. RF-F-12 exige que
+ * ese aviso se vea sin desplazar en TODA resolución, así que la altura la
+ * reparte el navegador y no una resta que hay que mantener a mano. */
+body {
+  margin: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: Archivo, "Helvetica Neue", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* RNF-09: sin animaciones cuando el sistema lo pide. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* RNF-06: foco siempre visible, en todo elemento alcanzable. */
+:focus-visible {
+  outline: 2px solid var(--cool);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.salto {
+  position: absolute;
+  left: -9999px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--panel-solido);
+  color: var(--ink);
+  border: 1px solid var(--cool);
+}
+.salto:focus {
+  left: 12px;
+  top: 12px;
+}
+
+/* --- cabecera --------------------------------------------------------- */
+
+.cabecera {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  min-height: var(--cabecera-alto);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--panel-solido);
+  border-bottom: 1px solid var(--line);
+}
+
+.marca {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.marca__icono {
+  font-size: 20px;
+}
+
+.latencia {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.25);
+}
+.latencia__bloque {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 104px;
+}
+.latencia__sep {
+  width: 1px;
+  background: var(--line);
+}
+.latencia__rotulo {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.latencia__valor {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 19px;
+  line-height: 1.15;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.latencia__valor[data-nivel="ok"] {
+  color: var(--ok);
+}
+.latencia__valor[data-nivel="warn"] {
+  color: var(--warn);
+}
+.latencia__valor[data-nivel="bad"] {
+  color: var(--bad);
+}
+.latencia__pie {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* --- banda de aviso (RF-F-13) ----------------------------------------- */
+
+.banda {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  border-bottom: 1px solid var(--line);
+}
+.banda[data-tono="error"] {
+  background: #4a1512;
+  color: #ffd9d5;
+}
+.banda[data-tono="aviso"] {
+  background: #4a3410;
+  color: #ffe6bd;
+}
+.banda[data-tono="demo"] {
+  background: #16323d;
+  color: #cfe9f3;
+}
+.banda strong {
+  font-weight: 700;
+}
+
+/* --- disposición ------------------------------------------------------ */
+
+.disposicion {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0; /* sin esto el grid desborda el flex y empuja el aviso legal */
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 320px;
+}
+
+.panel {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel-solido);
+  scrollbar-width: thin;
+}
+.panel--izq {
+  border-right: 1px solid var(--line);
+}
+.panel--der {
+  border-left: 1px solid var(--line);
+}
+
+.bloque {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.bloque--credito {
+  border-bottom: 0;
+}
+.bloque__titulo {
+  margin: 0 0 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.bloque__titulo--fijo {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--panel-solido);
+  border-bottom: 1px solid var(--line);
+}
+.contador {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+/* --- estado de fuentes (RF-F-06) -------------------------------------- */
+
+.fuentes,
+.resumen,
+.lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fuente {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+/* El estado no puede transmitirse solo por color: icono + texto además del
+   punto de color. Es el requisito de accesibilidad de RF-F-06. */
+.fuente__punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+}
+.fuente__punto[data-estado="ok"] {
+  background: var(--ok);
+}
+.fuente__punto[data-estado="stale"] {
+  background: var(--warn);
+}
+.fuente__punto[data-estado="error"] {
+  background: var(--bad);
+}
+.fuente__punto[data-estado="disabled"] {
+  background: var(--muted);
+}
+.fuente__nombre {
+  color: var(--ink);
+}
+.fuente__meta {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.fuente__estado {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+.fuente--error .fuente__estado {
+  color: var(--bad);
+}
+.fuente--stale .fuente__estado {
+  color: var(--warn);
+}
+
+.resumen li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.resumen b {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
+  min-width: 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- controles -------------------------------------------------------- */
+
+.conmutadores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.conmutador {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.conmutador[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--cool);
+  background: rgba(78, 143, 168, 0.14);
+}
+
+.segmentado {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.segmentado button {
+  flex: 1;
+  padding: 7px 4px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+}
+.segmentado button:last-child {
+  border-right: 0;
+}
+.segmentado button[aria-checked="true"] {
+  color: var(--ink);
+  background: rgba(78, 143, 168, 0.18);
+}
+
+.credito {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.credito a {
+  color: var(--cool);
+}
+
+/* --- mapa ------------------------------------------------------------- */
+
+.mapa-envoltorio {
+  position: relative;
+  min-width: 0;
+}
+.mapa {
+  position: absolute;
+  inset: 0;
+}
+
+.sin-webgl {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+  background: var(--ground);
+}
+.sin-webgl h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.sin-webgl p {
+  max-width: 46ch;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.sin-webgl__112 {
+  color: var(--ink) !important;
+}
+
+.leyenda {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  max-width: 260px;
+}
+.leyenda h3 {
+  margin: 0 0 6px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.leyenda__fila {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+/* Las filas que son solo texto no deben repartirse como elementos flex: un
+   <b> dentro de un flex se convierte en columna y parte la frase. */
+.leyenda__fila--texto {
+  display: block;
+}
+.leyenda__muestra {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.leyenda__muestra--anillo {
+  border: 1px dashed var(--e2);
+  background: transparent;
+}
+
+/* --- lista de incidentes (RF-F-07) ------------------------------------ */
+
+.tarjeta {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.tarjeta:hover,
+.tarjeta[data-resaltada="true"] {
+  background: rgba(78, 143, 168, 0.1);
+}
+.tarjeta__cabecera {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 3px;
+}
+.distintivo {
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.tarjeta__lugar {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tarjeta__meta {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.tarjeta__estado {
+  font-weight: 600;
+}
+.tarjeta__estado[data-estado="activo"] {
+  color: var(--e3);
+}
+.tarjeta__estado[data-estado="estabilizado"] {
+  color: var(--e2);
+}
+.tarjeta__estado[data-estado="controlado"] {
+  color: var(--ok);
+}
+
+.vacio {
+  padding: 24px 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* --- ficha de incidente (RF-F-10) ------------------------------------- */
+
+.ficha {
+  position: absolute;
+  z-index: 20;
+  right: 336px;
+  bottom: 12px;
+  width: 340px;
+  max-height: 66vh;
+  overflow-y: auto;
+  padding: 14px 16px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.ficha__cerrar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ficha h2 {
+  margin: 0 0 2px;
+  padding-right: 30px;
+  font-size: 16px;
+}
+.ficha__provincia {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ficha__seccion {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.ficha__seccion h3 {
+  margin: 0 0 6px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ficha__dato {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+.ficha__dato span {
+  color: var(--muted);
+}
+.ficha__dato b {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-weight: 500;
+  text-align: right;
+}
+/* El aviso de estimación no es letra pequeña: va destacado, porque confundir
+   una estimación con una medición es el error que este visor no comete. */
+.ficha__estimacion {
+  margin-top: 8px;
+  padding: 7px 9px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #ffe6bd;
+  background: rgba(255, 176, 32, 0.1);
+  border-left: 2px solid var(--warn);
+}
+.ficha__enlace {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--cool);
+}
+
+/* --- aviso legal ------------------------------------------------------ */
+
+.aviso-legal {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  min-height: var(--aviso-alto);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--muted);
+  background: var(--panel-solido);
+  border-top: 1px solid var(--line);
+}
+.aviso-legal strong {
+  color: var(--ink);
+}
+
+/* --- responsive (RNF-07: 360 px – 2560 px) ---------------------------- */
+
+@media (max-width: 1180px) {
+  .disposicion {
+    grid-template-columns: 268px minmax(0, 1fr);
+  }
+  .panel--der {
+    display: none;
+  }
+  .ficha {
+    right: 12px;
+  }
+}
+
+@media (max-width: 860px) {
+  :root {
+    --cabecera-alto: 104px;
+    --aviso-alto: 46px;
+  }
+  .cabecera {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .marca__texto {
+    font-size: 12px;
+  }
+  .latencia {
+    justify-content: space-around;
+  }
+  .disposicion {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .panel--izq {
+    position: absolute;
+    z-index: 8;
+    inset: 0 auto 0 0;
+    width: 280px;
+    max-width: 84vw;
+    transform: translateX(-101%);
+    transition: transform 0.18s ease;
+    border-right: 1px solid var(--line);
+  }
+  .panel--izq[data-abierto="true"] {
+    transform: none;
+  }
+  .ficha {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 52vh;
+  }
+  .leyenda {
+    display: none;
+  }
+}
+
+/* Controles de MapLibre alineados con el resto del panel. */
+.maplibregl-ctrl-group {
+  background: var(--panel) !important;
+  border: 1px solid var(--line) !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--line) !important;
+}
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(85%);
+}
+.maplibregl-ctrl-attrib {
+  background: var(--panel) !important;
+  font-size: 10px;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--cool) !important;
+}
+.nivel-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 29px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+/* --- filtros (RF-F-09) ------------------------------------------------ */
+
+.filtros {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.filtro__rotulo {
+  font-size: 10px;
+  color: var(--muted);
+}

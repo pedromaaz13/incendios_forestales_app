@@ -6,3 +6,12 @@ data/raw/
 data/out/
 data/history/
 node_modules/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+web/node_modules/
+web/dist/
+web/public/live/
+web/test-results/
+web/playwright-report/

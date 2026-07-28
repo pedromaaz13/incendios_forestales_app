@@ -1,0 +1,22 @@
+{
+  "name": "incendios-es-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "e2e": "playwright test",
+    "capturas": "playwright test tests/e2e/capturas.spec.ts"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}

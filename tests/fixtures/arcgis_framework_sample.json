@@ -1,0 +1,58 @@
+{
+  "_comment": "PAYLOAD SINTETICO. No procede de ningun portal autonomico real: sirve para ejercitar el framework de sources/adapters.py (ArcGISSource), no para validar una fuente concreta. Los fixtures reales que exige RF-P-03 son tests/fixtures/{source_id}.json y solo pueden crearse cuando se descubra cada endpoint (docs/descubrimiento-fuentes.md). No usar este fichero como sustituto.",
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-6.60482, 40.25113] },
+      "properties": {
+        "OBJECTID": 1001,
+        "ESTADO": "Nivel 1 - Activo",
+        "MUNICIPIO": "Sierra de Gata",
+        "PROVINCIA": "Caceres",
+        "NIVEL_IGR": 1,
+        "MEDIOS": "4 aereos, 12 terrestres",
+        "FECHA_ALTA": "2026-07-27T09:15:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-7.85003, 42.40118] },
+      "properties": {
+        "OBJECTID": 1002,
+        "ESTADO": "Controlado",
+        "MUNICIPIO": "Quiroga",
+        "PROVINCIA": "Lugo",
+        "NIVEL_IGR": 0,
+        "MEDIOS": "2 terrestres",
+        "FECHA_ALTA": "2026-07-27T06:40:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "x": -4.09200, "y": 38.70300 },
+      "properties": {
+        "OBJECTID": 1003,
+        "ESTADO": "En vigilancia posterior",
+        "MUNICIPIO": "Puertollano",
+        "PROVINCIA": "Ciudad Real",
+        "NIVEL_IGR": 0,
+        "MEDIOS": "1 terrestre",
+        "FECHA_ALTA": "2026-07-26T22:05:00Z"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [2.35222, 48.85661] },
+      "properties": {
+        "OBJECTID": 1004,
+        "ESTADO": "Activo",
+        "MUNICIPIO": "Fuera de Espana",
+        "PROVINCIA": "N/A",
+        "NIVEL_IGR": 0,
+        "MEDIOS": "",
+        "FECHA_ALTA": "2026-07-27T10:00:00Z"
+      }
+    }
+  ]
+}

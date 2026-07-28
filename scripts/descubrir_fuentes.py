@@ -1,0 +1,313 @@
+"""Sonda de descubrimiento de endpoints · apoyo a RF-P-03.
+
+**Esto se ejecuta en tu máquina, no en CI.** El agente que escribió el pipeline
+no tiene salida a internet, así que no puede abrir los portales autonómicos ni
+comprobar si una URL responde. Este script hace ese trabajo y te deja el
+resultado en un formato que se puede pegar directamente en una conversación.
+
+Qué hace con una URL:
+
+  1. La pide de verdad y dice qué contestó (código, tipo de contenido, tamaño).
+  2. Reconoce el tipo de servicio: ArcGIS FeatureServer/MapServer, WFS de
+     GeoServer, o JSON propio.
+  3. Enumera los **nombres reales de los campos** y enseña un registro de
+     ejemplo, que es lo que hay que meter en el `field_map` del adaptador.
+  4. Guarda la respuesta cruda en `tests/fixtures/{source_id}.json`, que es el
+     fixture de regresión que exige la sección 8.2.
+  5. Propone un `field_map` inicial adivinando por el nombre del campo.
+
+Lo que NO hace: inventar URLs. Si no le das ninguna, prueba una lista de
+candidatas conocidas y te dice cuáles responden, pero una candidata que
+responde no es necesariamente la buena — hay que mirar lo que devuelve.
+
+Uso:
+
+    # Probar una URL concreta (lo habitual, sacada de DevTools)
+    python scripts/descubrir_fuentes.py --url "https://..." --id jcyl
+
+    # Probar todas las candidatas conocidas
+    python scripts/descubrir_fuentes.py --explorar
+
+    # Enumerar las capas de un servidor ArcGIS o GeoServer
+    python scripts/descubrir_fuentes.py --listar "https://services.arcgis.com/xxx/ArcGIS/rest/services"
+
+    # Comprobar que tu FIRMS_MAP_KEY funciona
+    python scripts/descubrir_fuentes.py --firms
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+RAIZ = Path(__file__).resolve().parents[1]
+FIXTURES = RAIZ / "tests" / "fixtures"
+
+# User-Agent identificable con contacto, como exige RF-P-03. Cámbialo por tu
+# correo antes de usarlo en serio: si un administrador ve tráfico raro, que
+# pueda escribirte en vez de bloquearte.
+CONTACTO = os.environ.get("INCENDIOS_CONTACTO", "cambia-esto@ejemplo.org")
+UA = f"incendios-es/1.0 (+{CONTACTO})"
+
+TIMEOUT = 25.0
+
+# Candidatas a explorar. Son puntos de partida documentados públicamente
+# (portales de datos abiertos, catálogos de IDE), NO endpoints confirmados de
+# incendios activos. El script dice cuáles responden; decidir cuál sirve es
+# trabajo humano, mirando lo que devuelve.
+CANDIDATAS: dict[str, list[str]] = {
+    "jcyl": [
+        "https://idecyl.jcyl.es/geoserver/incendios/wfs?service=WFS&request=GetCapabilities",
+        "https://idecyl.jcyl.es/geoserver/wfs?service=WFS&request=GetCapabilities",
+    ],
+    "generico_arcgis": [
+        "https://services8.arcgis.com/wRYz6wFhbZUtSLje/ArcGIS/rest/services?f=pjson",
+    ],
+}
+
+# Pistas para adivinar el field_map. Se busca por subcadena en minúsculas.
+PISTAS = {
+    "external_id": ("objectid", "id_incendio", "codigo", "id", "fid", "num"),
+    "status": ("estado", "situacion", "fase", "estat"),
+    "municipio": ("municipio", "muni", "termino", "localidad", "poblacion"),
+    "provincia": ("provincia", "prov"),
+    "level": ("igr", "nivel", "gravedad"),
+    "resources": ("medios", "recursos", "dotacio"),
+    "reported_at": ("fecha", "alta", "inicio", "deteccion", "data", "hora"),
+}
+
+
+def cliente() -> httpx.Client:
+    return httpx.Client(follow_redirects=True, headers={"User-Agent": UA}, timeout=TIMEOUT)
+
+
+def _titulo(texto: str) -> None:
+    print(f"\n{'=' * 72}\n{texto}\n{'=' * 72}")
+
+
+def sondear(url: str, source_id: str | None = None, guardar: bool = True) -> dict[str, Any]:
+    """Pide la URL y describe lo que ha contestado."""
+    _titulo(f"Sondeando {url}")
+
+    try:
+        with cliente() as c:
+            r = c.get(url)
+    except Exception as exc:
+        print(f"  ✕ No responde: {type(exc).__name__}: {exc}")
+        return {"ok": False, "error": str(exc)}
+
+    tipo = r.headers.get("content-type", "?").split(";")[0]
+    print(f"  HTTP {r.status_code} · {tipo} · {len(r.content) / 1024:.1f} KB")
+
+    if r.status_code != 200:
+        print(f"  ✕ El servidor devolvió {r.status_code}. No sirve.")
+        print(f"    Primeros 300 caracteres:\n    {r.text[:300]}")
+        return {"ok": False, "status": r.status_code}
+
+    # Un HTML donde se esperaba JSON suele ser una página de error o un
+    # cortafuegos. Es el fallo silencioso que este proyecto vigila.
+    if "html" in tipo:
+        print("  ✕ Ha devuelto HTML, no datos. Suele ser una página de error,")
+        print("    un aviso de cookies o un WAF. Esta URL no es el endpoint.")
+        return {"ok": False, "html": True}
+
+    try:
+        datos = r.json()
+    except Exception:
+        print("  ⚠ No es JSON. Si es XML puede ser un GetCapabilities de WFS:")
+        print("    busca <FeatureType><Name> para ver las capas disponibles.")
+        print(f"    Primeros 600 caracteres:\n{r.text[:600]}")
+        return {"ok": False, "json": False, "texto": r.text[:2000]}
+
+    resumen = describir(datos)
+
+    if guardar and source_id and resumen.get("registros"):
+        FIXTURES.mkdir(parents=True, exist_ok=True)
+        destino = FIXTURES / f"{source_id}.json"
+        destino.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\n  ✓ Fixture guardado en {destino.relative_to(RAIZ)}")
+        print("    Este fichero es lo que hace mantenible el scraper: cuando la")
+        print("    comunidad cambie el formato en agosto, el test rojo te dirá cuál.")
+
+    return {"ok": True, **resumen}
+
+
+def describir(datos: Any) -> dict[str, Any]:
+    """Reconoce la forma del payload y enumera los campos reales."""
+    registros: list[dict] = []
+    forma = "desconocida"
+
+    if isinstance(datos, dict) and "features" in datos:
+        feats = datos["features"] or []
+        forma = "GeoJSON / ArcGIS FeatureServer"
+        registros = [
+            (f.get("properties") or f.get("attributes") or {}) for f in feats if isinstance(f, dict)
+        ]
+        geoms = [f.get("geometry") for f in feats[:3] if isinstance(f, dict)]
+        print(f"  ✓ {forma} · {len(feats)} features")
+        if geoms and geoms[0]:
+            print(f"    Geometría de ejemplo: {json.dumps(geoms[0], ensure_ascii=False)[:160]}")
+
+    elif isinstance(datos, dict) and "layers" in datos:
+        forma = "índice de servicio ArcGIS"
+        print(f"  ✓ {forma}. Capas publicadas:")
+        for capa in datos.get("layers", []):
+            print(f"      id={capa.get('id')}  {capa.get('name')}")
+        print("\n    Pide una capa concreta añadiendo /{id}/query?where=1%3D1&outFields=*&f=geojson")
+        return {"forma": forma, "registros": 0}
+
+    elif isinstance(datos, list):
+        forma = "lista JSON"
+        registros = [d for d in datos if isinstance(d, dict)]
+        print(f"  ✓ {forma} · {len(registros)} elementos")
+
+    elif isinstance(datos, dict):
+        # JSON propio: se busca la primera lista de objetos que contenga.
+        for clave, valor in datos.items():
+            if isinstance(valor, list) and valor and isinstance(valor[0], dict):
+                forma = f"JSON propio · lista en '{clave}'"
+                registros = valor
+                print(f"  ✓ {forma} · {len(valor)} elementos")
+                break
+        else:
+            print(f"  ⚠ JSON sin lista de registros. Claves: {list(datos)[:15]}")
+            return {"forma": forma, "registros": 0}
+
+    if not registros:
+        print("  ⚠ Cero registros. Puede ser correcto (no hay incendios ahora) o")
+        print("    puede que el filtro `where` esté excluyéndolo todo. Vuelve a")
+        print("    probar en un día con incendios activos antes de darlo por bueno.")
+        return {"forma": forma, "registros": 0}
+
+    campos = sorted({k for r in registros[:50] for k in r})
+    print(f"\n  CAMPOS REALES ({len(campos)}):")
+    for c in campos:
+        muestra = next((r[c] for r in registros if r.get(c) not in (None, "")), None)
+        print(f"      {c:28s} = {json.dumps(muestra, ensure_ascii=False, default=str)[:70]}")
+
+    print("\n  REGISTRO DE EJEMPLO COMPLETO:")
+    print("   ", json.dumps(registros[0], ensure_ascii=False, default=str)[:900])
+
+    proponer_field_map(campos)
+    return {"forma": forma, "registros": len(registros), "campos": campos}
+
+
+def proponer_field_map(campos: list[str]) -> None:
+    """Adivina el field_map por el nombre del campo. Es un borrador, no un oráculo."""
+    print("\n  FIELD_MAP PROPUESTO (revísalo, está adivinado por el nombre):")
+    print("    field_map={")
+    for destino, pistas in PISTAS.items():
+        elegido = next(
+            (c for pista in pistas for c in campos if pista in c.lower()),
+            "",
+        )
+        marca = "" if elegido else "   # <-- NO ENCONTRADO, ponlo a mano"
+        print(f'        "{destino}": "{elegido}",{marca}')
+    print("    },")
+    print("\n    Ojo con `reported_at`: comprueba en qué formato viene la fecha.")
+    print("    Muchos ArcGIS publican epoch en milisegundos, no ISO-8601.")
+
+
+def listar_servicios(url: str) -> None:
+    """Enumera las capas de un servidor ArcGIS o de un GeoServer."""
+    _titulo(f"Listando servicios de {url}")
+    separador = "&" if "?" in url else "?"
+
+    try:
+        with cliente() as c:
+            r = c.get(f"{url}{separador}f=pjson")
+            r.raise_for_status()
+            datos = r.json()
+    except Exception as exc:
+        print(f"  ✕ No se pudo listar: {exc}")
+        print("    Si es un GeoServer prueba: ?service=WFS&request=GetCapabilities")
+        return
+
+    for servicio in datos.get("services", []):
+        print(f"    {servicio.get('type'):16s} {servicio.get('name')}")
+    for capa in datos.get("layers", []):
+        print(f"    capa id={capa.get('id'):<4} {capa.get('name')}")
+    if not datos.get("services") and not datos.get("layers"):
+        print(f"    Respuesta sin servicios ni capas. Claves: {list(datos)[:15]}")
+
+
+def comprobar_firms() -> None:
+    """Verifica que FIRMS_MAP_KEY funciona antes de meterla en los secrets."""
+    _titulo("Comprobando FIRMS_MAP_KEY")
+    clave = os.environ.get("FIRMS_MAP_KEY", "")
+    if not clave:
+        print("  ✕ FIRMS_MAP_KEY no está en el entorno.")
+        print("    Pídela gratis en https://firms.modaps.eosdis.nasa.gov/api/map_key/")
+        print("    Luego:  export FIRMS_MAP_KEY=...")
+        return
+
+    url = (
+        "https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
+        f"{clave}/VIIRS_NOAA20_NRT/-9.6,35.85,4.4,43.9/1"
+    )
+    try:
+        with cliente() as c:
+            r = c.get(url)
+    except Exception as exc:
+        print(f"  ✕ Sin conexión con FIRMS: {exc}")
+        return
+
+    texto = r.text.strip()
+    primera = texto.splitlines()[0] if texto else ""
+
+    # FIRMS contesta 200 con texto plano cuando la clave falla: hay que mirar el
+    # contenido, no el código de estado. Es el fallo que RF-P-01 vigila.
+    if "," not in primera:
+        print(f"  ✕ La clave no funciona. FIRMS respondió: {texto[:200]}")
+        return
+
+    filas = max(0, len(texto.splitlines()) - 1)
+    print(f"  ✓ Clave válida · {filas} hotspots en las últimas 24 h en España")
+    print(f"    Cabecera CSV: {primera}")
+    print("\n    Mete la clave en Settings → Secrets and variables → Actions")
+    print("    del repositorio, con el nombre FIRMS_MAP_KEY.")
+
+
+def explorar() -> None:
+    _titulo("Explorando candidatas conocidas")
+    print("Recuerda: que una URL responda NO significa que sea la buena.")
+    print("Hay que mirar qué devuelve.\n")
+    for source_id, urls in CANDIDATAS.items():
+        for url in urls:
+            sondear(url, source_id=None, guardar=False)
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--url", help="URL a sondear (la que sacaste de DevTools)")
+    p.add_argument("--id", help="source_id, para guardar el fixture (jcyl, infoca, ...)")
+    p.add_argument("--listar", metavar="URL", help="enumerar capas de un ArcGIS/GeoServer")
+    p.add_argument("--explorar", action="store_true", help="probar las candidatas conocidas")
+    p.add_argument("--firms", action="store_true", help="comprobar FIRMS_MAP_KEY")
+    args = p.parse_args()
+
+    if CONTACTO == "cambia-esto@ejemplo.org":
+        print("⚠ Pon tu correo antes de lanzar peticiones a portales oficiales:")
+        print("    export INCENDIOS_CONTACTO=tu@correo.es\n")
+
+    if args.firms:
+        comprobar_firms()
+    elif args.listar:
+        listar_servicios(args.listar)
+    elif args.url:
+        sondear(args.url, source_id=args.id)
+    elif args.explorar:
+        explorar()
+    else:
+        p.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

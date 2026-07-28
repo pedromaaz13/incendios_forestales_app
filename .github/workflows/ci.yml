@@ -1,0 +1,122 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: Pipeline · ruff + pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Lint
+        run: ruff check src/ tests/ scripts/
+
+      # RNF-10 · el umbral del 85 % vive en pyproject.toml, así que basta con
+      # pedir cobertura: el fallo por debajo del umbral lo aplica coverage.
+      - name: Pruebas
+        run: pytest --cov
+
+      # Verifica que el pipeline produce artefactos válidos de punta a punta,
+      # sin red y sin claves. Si los invariantes fallan, este paso falla.
+      - name: Generar datos de demostración
+        run: PYTHONPATH=src python scripts/build_demo_data.py
+
+      - name: Prueba de humo
+        run: PYTHONPATH=src python scripts/smoke_test.py
+
+      - name: Subir artefactos de demostración
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-demo
+          path: web/public/live/
+          retention-days: 7
+
+  frontend:
+    name: Frontend · tsc, build, E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: web
+        run: npm ci
+
+      - name: Comprobar tipos
+        working-directory: web
+        run: npx tsc --noEmit
+
+      - name: Compilar
+        working-directory: web
+        run: npx vite build
+
+      # Los escenarios de 8.4 y las capturas de 9.2 necesitan datos publicados.
+      # Se generan aquí para que el E2E no dependa de producción: las pruebas
+      # tienen que ser deterministas.
+      - name: Preparar datos de demostración
+        run: |
+          python -m pip install -q -r requirements.txt
+          PYTHONPATH=src python scripts/build_demo_data.py
+
+      - name: Instalar navegador
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E y capturas
+        working-directory: web
+        run: npx playwright test
+
+      # «Un requisito sin captura no se considera entregado» (sección 9).
+      - name: Subir evidencias
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-hito-2
+          path: docs/evidencias/
+          retention-days: 30
+
+      # RNF-02 · presupuesto de 900 KB para la carga inicial. Se mide sobre el
+      # tamaño comprimido, que es lo que viaja por la red.
+      - name: Presupuesto de peso
+        working-directory: web
+        run: |
+          TOTAL=$(find dist/assets -type f \( -name '*.js' -o -name '*.css' \) \
+            -exec gzip -c {} \; | wc -c)
+          KB=$((TOTAL / 1024))
+          echo "Carga inicial comprimida: ${KB} KB (presupuesto: 900 KB)"
+          echo "Carga inicial comprimida: ${KB} KB / 900 KB" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$KB" -gt 900 ]; then
+            echo "::error::RNF-02 incumplido: ${KB} KB supera los 900 KB"
+            exit 1
+          fi
