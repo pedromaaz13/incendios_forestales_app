@@ -37,6 +37,11 @@ export interface PropiedadesIncidente {
   started_at: string | null;
   /** Añadido en cliente: radio en píxeles a zoom 0, para el anillo métrico. */
   _radio_base?: number;
+  /** Añadido en cliente: la lista y la ficha se pintan desde las propiedades,
+   *  sin acceso a la geometría, y necesitan las coordenadas para poder decir
+   *  dónde está un incendio que todavía no tiene municipio. */
+  _lon?: number;
+  _lat?: number;
 }
 
 export interface PropiedadesHotspot {

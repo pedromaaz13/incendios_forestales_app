@@ -258,3 +258,19 @@ test('RF-F-06 · las fuentes en error van primero y con texto', async ({ page })
   // El estado no puede transmitirse solo por color.
   await expect(primera).toContainText('sin respuesta');
 });
+
+// --- RF-P-07 · sin capa municipal ------------------------------------------
+
+test('sin municipio la tarjeta dice dónde está, no solo que no lo sabe', async ({ page }) => {
+  // Mientras no esté la capa del IGN todos los incidentes salen sin nombre.
+  // "Ubicación por determinar" es honesto y completamente inútil: quien mira la
+  // lista no puede saber si le pilla cerca. Las coordenadas sí lo dicen.
+  await abrir(page);
+
+  const textos = await page.locator('.tarjeta').allTextContents();
+  const sinNombre = textos.filter((t) => t.includes('Ubicación por determinar'));
+
+  for (const t of sinNombre) {
+    expect(t).toMatch(/\d+\.\d{4}° [NS], \d+\.\d{4}° [EO]/);
+  }
+});

@@ -13,6 +13,7 @@
  */
 
 import {
+  coordenadas,
   etiquetaEstado,
   fechaHora,
   listaFuentes,
@@ -53,9 +54,14 @@ function contenido(p: PropiedadesIncidente): string {
   return `
     <button type="button" class="ficha__cerrar" aria-label="Cerrar ficha">×</button>
 
-    <h2 id="ficha-titulo">${texto(p.municipio ?? 'Ubicación por determinar')}</h2>
+    <h2 id="ficha-titulo">${texto(
+      p.municipio ??
+        (p._lon !== undefined && p._lat !== undefined
+          ? coordenadas(p._lon, p._lat)
+          : 'Ubicación por determinar'),
+    )}</h2>
     <p class="ficha__provincia">
-      ${texto(p.provincia ?? 'Provincia no facilitada')} ·
+      ${texto(p.provincia ?? (p.municipio ? 'Provincia no facilitada' : 'Sin nombre de municipio disponible'))} ·
       ${etiquetaEstado(p.status)}
     </p>
     ${dato('Confirmado por', listaFuentes(p.confirmed_by))}
