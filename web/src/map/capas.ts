@@ -13,6 +13,7 @@ export const FUENTE_INCIDENTES = 'incidentes';
 export const FUENTE_HOTSPOTS = 'hotspots';
 export const FUENTE_PERIMETROS = 'perimetros';
 export const FUENTE_VIENTO = 'viento';
+export const FUENTE_AIRE = 'aire';
 
 export const CAPA_INCERTIDUMBRE = 'incidentes-incertidumbre';
 export const CAPA_INCIDENTES = 'incidentes-simbolo';
@@ -21,6 +22,7 @@ export const CAPA_HOTSPOTS = 'hotspots-punto';
 export const CAPA_PERIMETRO_ESTIMADO = 'perimetros-estimado';
 export const CAPA_PERIMETRO_EFFIS = 'perimetros-effis';
 export const CAPA_VIENTO = 'viento-flecha';
+export const CAPA_AIRE = 'aire-circulo';
 
 /** Zoom a partir del cual aparecen los hotspots crudos (RF-F-04). */
 export const ZOOM_HOTSPOTS = 9;
@@ -269,4 +271,55 @@ export function anadirCapaViento(mapa: MapaGL): void {
       'icon-halo-width': 1.5,
     },
   });
+}
+
+
+/**
+ * Calidad del aire · índice europeo (EAQI).
+ *
+ * Los cortes de color son los que publica la Agencia Europea de Medio Ambiente,
+ * no una rampa continua: el EAQI no es un porcentaje y sus tramos marcan
+ * recomendaciones sanitarias distintas. Interpolar entre ellos difuminaría justo
+ * la frontera donde cambia el consejo.
+ *
+ * Va por debajo de los incendios a propósito. Es contexto —el humo llega mucho
+ * más lejos que el fuego— pero no debe tapar el dato principal, y sobre todo no
+ * insinúa causalidad: un índice alto puede ser tráfico, calima sahariana o un
+ * incendio a 200 km, y la capa no distingue cuál.
+ */
+export function anadirCapaAire(mapa: MapaGL): void {
+  mapa.addLayer(
+    {
+      id: CAPA_AIRE,
+      type: 'circle',
+      source: FUENTE_AIRE,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 9, 10, 26],
+        'circle-color': [
+          'step',
+          ['get', 'aqi'],
+          '#4ac97e', 20,
+          '#c8d94a', 40,
+          '#ffe08a', 60,
+          '#ffa23a', 80,
+          '#f05a28', 100,
+          '#8b2fa8',
+        ],
+        'circle-opacity': 0.35,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': [
+          'step',
+          ['get', 'aqi'],
+          '#4ac97e', 20,
+          '#c8d94a', 40,
+          '#ffe08a', 60,
+          '#ffa23a', 80,
+          '#f05a28', 100,
+          '#8b2fa8',
+        ],
+        'circle-stroke-opacity': 0.75,
+      },
+    },
+    CAPA_INCERTIDUMBRE,
+  );
 }

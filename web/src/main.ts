@@ -14,6 +14,7 @@ import './estilos.css';
 
 import { cargarGeoJson, cargarIncidentes, cargarManifiesto, cargarSalud } from './datos';
 import {
+  CAPA_AIRE,
   CAPA_HOTSPOTS,
   CAPA_INCIDENTES,
   CAPA_PERIMETRO_EFFIS,
@@ -23,7 +24,9 @@ import {
   FUENTE_HOTSPOTS,
   FUENTE_INCIDENTES,
   FUENTE_PERIMETROS,
+  FUENTE_AIRE,
   FUENTE_VIENTO,
+  anadirCapaAire,
   anadirCapaHotspots,
   anadirCapaViento,
   anadirCapasIncidentes,
@@ -72,7 +75,7 @@ const estado: Estado = {
   salud: null,
   incidentes: null,
   seleccionado: null,
-  capas: { hotspots: true, perimetros: false, viento: false },
+  capas: { hotspots: true, perimetros: false, viento: false, aire: false },
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
 };
 
@@ -297,6 +300,7 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     hotspots: () => mapa.getSource(FUENTE_HOTSPOTS),
     perimetros: () => mapa.getSource(FUENTE_PERIMETROS),
     viento: () => mapa.getSource(FUENTE_VIENTO),
+    aire: () => mapa.getSource(FUENTE_AIRE),
   }[capa];
   if (ya?.()) return;
 
@@ -320,6 +324,13 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     mapa.addSource(FUENTE_VIENTO, { type: 'geojson', data: datos });
     anadirCapaViento(mapa);
   }
+
+  if (capa === 'aire') {
+    const datos = await cargarGeoJson('aire.geojson');
+    if (!datos) return;
+    mapa.addSource(FUENTE_AIRE, { type: 'geojson', data: datos });
+    anadirCapaAire(mapa);
+  }
 }
 
 function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
@@ -329,6 +340,7 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     hotspots: [CAPA_HOTSPOTS],
     perimetros: [CAPA_PERIMETRO_EFFIS, CAPA_PERIMETRO_ESTIMADO],
     viento: [CAPA_VIENTO],
+    aire: [CAPA_AIRE],
   };
 
   const aplicar = () => {
@@ -550,6 +562,7 @@ function construirConmutadores(mapa: MapaGL): void {
     ['hotspots', 'Focos satelitales'],
     ['perimetros', 'Perímetros'],
     ['viento', 'Viento'],
+    ['aire', 'Calidad del aire'],
   ];
 
   nodo.innerHTML = capas
@@ -595,6 +608,14 @@ function pintarLeyenda(): void {
       estado.capas.viento
         ? `<div class="leyenda__fila leyenda__fila--texto">
              Las flechas apuntan <b>hacia donde sopla</b> el viento, no de dónde viene
+           </div>`
+        : ''
+    }
+    ${
+      estado.capas.aire
+        ? `<div class="leyenda__fila leyenda__fila--texto">
+             Calidad del aire: índice europeo. Un valor alto <b>no implica</b> que
+             el humo venga del incendio más cercano
            </div>`
         : ''
     }`;

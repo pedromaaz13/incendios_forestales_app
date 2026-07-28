@@ -12,9 +12,9 @@ y entonces **no se escribe nada**. El frontend sigue leyendo el manifiesto
 anterior, cuya edad crece a la vista, y eso es honesto. Publicar datos corruptos
 con marca de tiempo fresca no lo es.
 
-Un fallo en una fuente de contexto —el viento— no aborta nada: el mapa sin
-viento sigue sirviendo, y tumbar la publicación de incendios porque no responde
-un servicio meteorológico gratuito sería desproporcionado.
+Un fallo en una fuente de contexto —viento, calidad del aire— no aborta nada: el
+mapa sin ellas sigue sirviendo, y tumbar la publicación de incendios porque no
+responde un servicio meteorológico gratuito sería desproporcionado.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 import geopandas as gpd
 import pandas as pd
 
+from . import aire as aire_mod
 from . import build as build_mod
 from . import clean as clean_mod
 from . import cluster as cluster_mod
@@ -63,6 +64,7 @@ def run(
     persist_raw: bool = True,
     *,
     con_viento: bool = True,
+    con_aire: bool = True,
     outputs=None,
 ) -> dict:
     """Ejecuta el pipeline completo y devuelve el manifiesto publicado."""
@@ -155,10 +157,11 @@ def run(
     # --- publicación atómica ------------------------------------------------
 
     viento = wind_mod.fetch() if con_viento else None
+    calidad_aire = aire_mod.fetch() if con_aire else None
 
     publish_mod.publish_atomically([
         ("capas de datos", lambda: _escribir_datos(
-            hotspots, fires, incidents, perimeters, viento, outputs
+            hotspots, fires, incidents, perimeters, viento, calidad_aire, outputs
         )),
         ("sources.json", lambda: informe.write(outputs.sources_json)),
         ("manifest.json", lambda: build_mod.write_manifest(manifest, outputs.manifest)),
@@ -227,7 +230,9 @@ def _informe_de_salud(
     return informe
 
 
-def _escribir_datos(hotspots, fires, incidents, perimeters, viento, outputs) -> None:
+def _escribir_datos(
+    hotspots, fires, incidents, perimeters, viento, calidad_aire, outputs
+) -> None:
     """Todas las capas menos `sources.json` y `manifest.json`.
 
     Van juntas en un solo paso porque, entre ellas, el orden da igual: lo que
@@ -246,6 +251,9 @@ def _escribir_datos(hotspots, fires, incidents, perimeters, viento, outputs) -> 
 
     if viento is not None and len(viento):
         export_mod._write_geojson(viento, outputs.wind_geojson, wind_mod.WIND_SCHEMA)
+
+    if calidad_aire is not None and len(calidad_aire):
+        export_mod._write_geojson(calidad_aire, outputs.aire_geojson, aire_mod.AIRE_SCHEMA)
 
     export_mod.write_pmtiles(outputs.hotspots_geojson, outputs.hotspots_pmtiles, layer="hotspots")
     export_mod.write_history(hotspots)
@@ -270,10 +278,17 @@ def main() -> None:
     parser.add_argument(
         "--sin-viento", action="store_true", help="omitir la capa de viento (Open-Meteo)"
     )
+    parser.add_argument(
+        "--sin-aire", action="store_true", help="omitir la capa de calidad del aire"
+    )
     args = parser.parse_args()
 
     setup_logging(args.verbose)
-    manifest = run(persist_raw=not args.no_raw, con_viento=not args.sin_viento)
+    manifest = run(
+        persist_raw=not args.no_raw,
+        con_viento=not args.sin_viento,
+        con_aire=not args.sin_aire,
+    )
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
 
 
