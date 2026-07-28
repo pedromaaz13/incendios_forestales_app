@@ -31,6 +31,13 @@ import {
 } from './map/capas';
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { abrirFicha, cerrarFicha } from './ui/ficha';
+import {
+  FILTROS_INICIALES,
+  aplicar as aplicarFiltros,
+  construirControles as construirFiltros,
+  pasaElFiltro,
+  type EstadoFiltros,
+} from './ui/filtros';
 import { pintarLista } from './ui/lista';
 import {
   pintarAtribucion,
@@ -56,6 +63,7 @@ interface Estado {
   incidentes: ColeccionIncidentes | null;
   seleccionado: string | null;
   capas: Record<string, boolean>;
+  filtros: EstadoFiltros;
 }
 
 const estado: Estado = {
@@ -65,6 +73,7 @@ const estado: Estado = {
   incidentes: null,
   seleccionado: null,
   capas: { hotspots: true, perimetros: false, viento: false },
+  filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
 };
 
 /**
@@ -102,11 +111,18 @@ async function arrancar(): Promise<void> {
     // RNF-08: mensaje explícito, nunca pantalla en blanco.
     document.getElementById('sin-webgl')!.hidden = false;
     pintarBanda(
-      'Este navegador no puede mostrar el mapa. Los datos siguen disponibles ' +
-        'en los paneles laterales.',
+      'Este navegador no puede mostrar el mapa. Los incendios siguen listados ' +
+        'en el panel lateral.',
       'error',
     );
     await cargarDatos();
+    // Sin mapa no hay viewport contra el que recortar, así que se listan todos.
+    // Quedarse solo con el mensaje de error sería perder justo lo que la
+    // persona ha venido a consultar, que es qué está ardiendo y dónde.
+    pintarLista(
+      (estado.incidentes?.features ?? []).map((f) => f.properties),
+      manejadoresSinMapa(),
+    );
     return;
   }
 
@@ -146,6 +162,7 @@ async function arrancar(): Promise<void> {
     void datosListos.then(() => {
       montarCapas(mapa);
       conectarInteraccion(mapa);
+      aplicarFiltros(mapa, estado.filtros);
       refrescarLista();
       abrirDesdeUrl();
     });
@@ -158,6 +175,15 @@ async function arrancar(): Promise<void> {
 
   construirSelectorEstilo(mapa);
   construirConmutadores(mapa);
+  construirFiltros(document.getElementById('filtros')!, estado.filtros, {
+    alCambiar: (f) => {
+      aplicarFiltros(mapa, f);
+      // La lista se repinta con el mismo predicado. Que el mapa y la lista
+      // discrepen sería peor que no tener filtros: alguien vería una tarjeta
+      // de un incendio que no está en el mapa y no sabría a cuál creer.
+      refrescarLista();
+    },
+  });
   pintarLeyenda();
 
   window.setInterval(() => {
@@ -309,6 +335,9 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     for (const id of ids[capa] ?? []) {
       if (mapa.getLayer(id)) mapa.setLayoutProperty(id, 'visibility', visibilidad);
     }
+    // Una capa recién montada nace sin filtro: hay que aplicárselo o
+    // aparecerían hotspots de 3 días con el período puesto en 1.
+    aplicarFiltros(mapa, estado.filtros);
     pintarLeyenda();
   };
 
@@ -372,11 +401,24 @@ function refrescarLista(): void {
   const visibles = estado.incidentes.features
     .filter((f) => {
       const c = f.geometry?.coordinates;
-      return c ? limites.contains([c[0], c[1]]) : false;
+      if (!c || !limites.contains([c[0], c[1]])) return false;
+      return pasaElFiltro(f.properties, estado.filtros);
     })
     .map((f) => f.properties);
 
   pintarLista(visibles, manejadoresLista());
+}
+
+/** Sin mapa la ficha sigue siendo útil: solo desaparece el centrado. */
+function manejadoresSinMapa() {
+  return {
+    alPulsar: (id: string) => {
+      const rasgo = estado.incidentes?.features.find((f) => f.properties.id === id);
+      if (rasgo) abrirFicha(rasgo.properties, cerrarFicha);
+    },
+    alEntrar: () => {},
+    alSalir: () => {},
+  };
 }
 
 function manejadoresLista() {
@@ -492,6 +534,7 @@ function construirSelectorEstilo(mapa: MapaGL): void {
         for (const [capa, activa] of Object.entries(estado.capas)) {
           if (activa) alternarCapa(mapa, capa, true);
         }
+        aplicarFiltros(mapa, estado.filtros);
         resaltar(estado.seleccionado);
       });
       for (const otro of nodo.querySelectorAll('button')) {
@@ -545,10 +588,14 @@ function pintarLeyenda(): void {
       <span class="leyenda__muestra leyenda__muestra--anillo"></span>
       Margen de posición de la fuente
     </div>
-    <div class="leyenda__fila">Borde grueso: confirmado por parte oficial</div>
+    <div class="leyenda__fila leyenda__fila--texto">
+      Borde grueso: confirmado por parte oficial
+    </div>
     ${
       estado.capas.viento
-        ? '<div class="leyenda__fila">Las flechas apuntan <b>hacia donde sopla</b> el viento</div>'
+        ? `<div class="leyenda__fila leyenda__fila--texto">
+             Las flechas apuntan <b>hacia donde sopla</b> el viento, no de dónde viene
+           </div>`
         : ''
     }`;
 }

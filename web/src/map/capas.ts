@@ -197,21 +197,67 @@ export function anadirCapasPerimetros(mapa: MapaGL): void {
  * y confunde a cualquiera que no sea meteorólogo. Aquí la lectura errónea es
  * cara: significa creer que el frente avanza al revés. La leyenda lo explica.
  */
+export const ICONO_FLECHA = 'flecha-viento';
+
+/**
+ * Dibuja la flecha del viento en un lienzo y la registra como imagen.
+ *
+ * No se usa un símbolo de texto porque los estilos raster de `estilos.ts` no
+ * declaran `glyphs`, y sin servidor de fuentes MapLibre no pinta `text-field`:
+ * la capa se activaba y no aparecía nada. Un icono generado aquí no depende de
+ * ningún servicio externo, que además es una dependencia menos que se pueda
+ * caer en mitad de un incendio.
+ */
+function registrarIconoFlecha(mapa: MapaGL): void {
+  if (mapa.hasImage(ICONO_FLECHA)) return;
+
+  const lado = 64;
+  const lienzo = document.createElement('canvas');
+  lienzo.width = lado;
+  lienzo.height = lado;
+  const ctx = lienzo.getContext('2d');
+  if (!ctx) return;
+
+  // Flecha apuntando hacia arriba; `icon-rotate` la orienta después. El origen
+  // del ángulo en MapLibre es el norte y crece en sentido horario, que es la
+  // misma convención en la que viene `direction_to_deg`.
+  ctx.translate(lado / 2, lado / 2);
+  ctx.beginPath();
+  ctx.moveTo(0, -26);
+  ctx.lineTo(13, 10);
+  ctx.lineTo(0, 2);
+  ctx.lineTo(-13, 10);
+  ctx.closePath();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(15,22,25,0.85)';
+  ctx.stroke();
+
+  const datos = ctx.getImageData(0, 0, lado, lado);
+  // `sdf: true` permite recolorear el icono por velocidad con `icon-color`,
+  // igual que se haría con un símbolo de texto.
+  mapa.addImage(ICONO_FLECHA, datos, { sdf: true });
+}
+
 export function anadirCapaViento(mapa: MapaGL): void {
+  registrarIconoFlecha(mapa);
+
   mapa.addLayer({
     id: CAPA_VIENTO,
     type: 'symbol',
     source: FUENTE_VIENTO,
     layout: {
-      'text-field': '➤',
-      'text-size': ['interpolate', ['linear'], ['get', 'speed_kmh'], 0, 14, 60, 26],
-      'text-rotate': ['get', 'direction_to_deg'],
-      'text-rotation-alignment': 'map',
-      'text-allow-overlap': true,
-      'text-ignore-placement': true,
+      'icon-image': ICONO_FLECHA,
+      'icon-size': ['interpolate', ['linear'], ['get', 'speed_kmh'], 0, 0.35, 60, 0.75],
+      'icon-rotate': ['get', 'direction_to_deg'],
+      'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
     },
     paint: {
-      'text-color': [
+      'icon-color': [
         'step',
         ['get', 'speed_kmh'],
         '#4ac97e', 15,
@@ -219,8 +265,8 @@ export function anadirCapaViento(mapa: MapaGL): void {
         '#ffa23a', 50,
         '#c81e1e',
       ],
-      'text-halo-color': 'rgba(15,22,25,0.85)',
-      'text-halo-width': 1.2,
+      'icon-halo-color': 'rgba(15,22,25,0.9)',
+      'icon-halo-width': 1.5,
     },
   });
 }

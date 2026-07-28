@@ -13,3 +13,5 @@ htmlcov/
 web/node_modules/
 web/dist/
 web/public/live/
+web/test-results/
+web/playwright-report/

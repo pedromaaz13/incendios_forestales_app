@@ -466,6 +466,11 @@ body {
   gap: 8px;
   color: var(--muted);
 }
+/* Las filas que son solo texto no deben repartirse como elementos flex: un
+   <b> dentro de un flex se convierte en columna y parte la frase. */
+.leyenda__fila--texto {
+  display: block;
+}
 .leyenda__muestra {
   width: 12px;
   height: 12px;
@@ -740,4 +745,21 @@ body {
   font-size: 11px;
   color: var(--ink);
   border-bottom: 1px solid var(--line);
+}
+
+/* --- filtros (RF-F-09) ------------------------------------------------ */
+
+.filtros {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.filtro__rotulo {
+  font-size: 10px;
+  color: var(--muted);
 }

@@ -100,6 +100,15 @@ class Outputs:
     perimeters_geojson: Path = OUT / "perimeters.geojson"
     hotspots_pmtiles: Path = OUT / "hotspots.pmtiles"
     manifest: Path = OUT / "manifest.json"
+    # Contrato 3.1: la capa que consume el frontend es `incidents`, no `fires`.
+    # `fires.geojson` se conserva porque es la salida cruda del clustering y
+    # sigue siendo útil para depurar la fusión.
+    incidents_geojson: Path = OUT / "incidents.geojson"
+    sources_json: Path = OUT / "sources.json"
+    wind_geojson: Path = OUT / "wind.geojson"
+    # Contadores de ejecuciones anteriores. No se publica: es estado interno
+    # contra el que se compara para detectar un vaciado sospechoso (RF-P-11).
+    runs_json: Path = HISTORY / "runs.json"
     history_dir: Path = HISTORY
     extra: dict = field(default_factory=dict)
 

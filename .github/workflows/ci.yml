@@ -51,12 +51,17 @@ jobs:
           retention-days: 7
 
   frontend:
-    name: Frontend · tsc + build
+    name: Frontend · tsc, build, E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
 
       - uses: actions/setup-node@v4
         with:
@@ -75,6 +80,31 @@ jobs:
       - name: Compilar
         working-directory: web
         run: npx vite build
+
+      # Los escenarios de 8.4 y las capturas de 9.2 necesitan datos publicados.
+      # Se generan aquí para que el E2E no dependa de producción: las pruebas
+      # tienen que ser deterministas.
+      - name: Preparar datos de demostración
+        run: |
+          python -m pip install -q -r requirements.txt
+          PYTHONPATH=src python scripts/build_demo_data.py
+
+      - name: Instalar navegador
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E y capturas
+        working-directory: web
+        run: npx playwright test
+
+      # «Un requisito sin captura no se considera entregado» (sección 9).
+      - name: Subir evidencias
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidencias-hito-2
+          path: docs/evidencias/
+          retention-days: 30
 
       # RNF-02 · presupuesto de 900 KB para la carga inicial. Se mide sobre el
       # tamaño comprimido, que es lo que viaja por la red.
