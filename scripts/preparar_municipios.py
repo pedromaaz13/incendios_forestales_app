@@ -29,6 +29,7 @@ import argparse
 import logging
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 import geopandas as gpd
@@ -176,6 +177,18 @@ def preparar(origen: Path, destino: Path = DESTINO) -> dict:
 
     if gdf.crs is None:
         raise CapaNoValida("La capa no declara CRS; no se puede reproyectar con seguridad")
+
+    # Las "líneas límite" del IGN son justamente eso: líneas. Sirven para pintar
+    # fronteras, no para decir en qué municipio cae un punto. Rechazarlas aquí
+    # con un mensaje claro ahorra media hora de desconcierto.
+    if not es_poligonal(gdf):
+        raise CapaNoValida(
+            f"La capa es de tipo {sorted(set(gdf.geom_type.dropna().unique()))}, "
+            "no de polígonos. Para el geocoding inverso hacen falta los "
+            "**recintos** municipales, no las líneas límite. Busca en la "
+            "descarga un fichero con 'recinto' o 'municipio' en el nombre."
+        )
+
     gdf = gdf.to_crs(CRS_WGS84)
 
     columna, provincia = validar(gdf)
@@ -208,12 +221,70 @@ def preparar(origen: Path, destino: Path = DESTINO) -> dict:
     return {"municipios": len(slim), "mb": round(mb, 1), "destino": str(destino)}
 
 
+# Extensiones que geopandas sabe abrir directamente.
+EXTENSIONES = (".shp", ".gml", ".gpkg", ".geojson", ".json", ".kml", ".sqlite")
+
+# La descarga del IGN trae varias capas juntas. Solo una sirve: hacen falta
+# **recintos** (polígonos), no **líneas límite** (líneas). Con líneas no se
+# puede hacer point-in-polygon, así que se prefieren por nombre y, si el nombre
+# no lo aclara, se descarta por el tipo de geometría.
+PREFERIDAS = ("recinto", "municipio", "muni", "adminunit", "administrativeunit")
+DESCARTADAS = ("linea", "línea", "limite", "límite", "boundary", "line")
+
+
+def candidatos_en(ruta: Path) -> list[Path]:
+    """Ordena los ficheros de una carpeta o zip por probabilidad de servir."""
+    if ruta.is_file() and ruta.suffix.lower() == ".zip":
+        destino = ruta.parent / f"{ruta.stem}_extraido"
+        log.info("Descomprimiendo %s", ruta.name)
+        with zipfile.ZipFile(ruta) as z:
+            z.extractall(destino)
+        ruta = destino
+
+    if ruta.is_file():
+        return [ruta]
+
+    ficheros = [
+        f for f in sorted(ruta.rglob("*")) if f.suffix.lower() in EXTENSIONES
+    ]
+    if not ficheros:
+        raise CapaNoValida(
+            f"No hay ninguna capa reconocible en {ruta}. Extensiones buscadas: "
+            f"{EXTENSIONES}"
+        )
+
+    def prioridad(f: Path) -> tuple[int, int, str]:
+        nombre = f.name.lower()
+        preferida = any(p in nombre for p in PREFERIDAS)
+        descartada = any(d in nombre for d in DESCARTADAS)
+        # Menor es mejor: primero las que parecen recintos, al final las que
+        # parecen líneas.
+        return (0 if preferida and not descartada else 1 if not descartada else 2,
+                len(nombre), nombre)
+
+    ordenados = sorted(ficheros, key=prioridad)
+    log.info("Capas encontradas (%d), en orden de prioridad:", len(ordenados))
+    for f in ordenados[:12]:
+        log.info("    %s", f.relative_to(ruta) if ruta in f.parents else f.name)
+    return ordenados
+
+
+def es_poligonal(gdf: gpd.GeoDataFrame) -> bool:
+    """Solo los polígonos sirven: con líneas no hay point-in-polygon."""
+    tipos = set(gdf.geom_type.dropna().unique())
+    return bool(tipos & {"Polygon", "MultiPolygon"})
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(message)s")
 
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--url", help="URL de la que descargar la capa")
-    p.add_argument("--fichero", help="fichero local ya descargado (GeoJSON, GPKG, SHP...)")
+    p.add_argument(
+        "--fichero",
+        help="fichero, carpeta o .zip local. Si es carpeta o zip, se buscan "
+        "dentro las capas y se prueban por orden de probabilidad",
+    )
     p.add_argument("--candidatas", action="store_true", help="probar las URL conocidas")
     p.add_argument("--destino", default=str(DESTINO))
     args = p.parse_args()
@@ -221,7 +292,11 @@ def main() -> None:
     destino = Path(args.destino)
 
     if args.fichero:
-        origenes = [("fichero local", Path(args.fichero))]
+        ruta = Path(args.fichero).expanduser()
+        if not ruta.exists():
+            print(f"❌ No existe: {ruta}")
+            sys.exit(1)
+        origenes = [(f"local · {c.name}", c) for c in candidatos_en(ruta)]
     elif args.url:
         origenes = [("url indicada", args.url)]
     elif args.candidatas:
