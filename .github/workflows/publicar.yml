@@ -64,19 +64,42 @@ jobs:
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
           PYTHONPATH: src
         run: |
+          # Caer a la demo sin decir por qué convierte un problema de
+          # configuración en un misterio. Cada rama deja su motivo en el
+          # resumen del job.
           if [ -z "$FIRMS_MAP_KEY" ]; then
-            echo "::warning::FIRMS_MAP_KEY no configurada; se publica la demo"
+            echo "::error::FIRMS_MAP_KEY no llega al workflow. Comprueba que el"
+            echo "::error::secreto existe en Settings > Secrets and variables >"
+            echo "::error::Actions (pestaña 'Secrets', no 'Variables') y que se"
+            echo "::error::llama exactamente FIRMS_MAP_KEY."
+            echo "motivo=La clave FIRMS_MAP_KEY no está configurada" >> "$GITHUB_OUTPUT"
             python scripts/build_demo_data.py
             echo "modo=demo" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if python -m incendios.pipeline -v --no-raw; then
+          echo "FIRMS_MAP_KEY presente (${#FIRMS_MAP_KEY} caracteres)."
+
+          # Comprueba la clave antes de correr el pipeline entero: FIRMS
+          # responde 200 con texto plano cuando está agotada o es inválida, y
+          # sin esta comprobación el fallo aparecería como "cero incendios".
+          if ! python scripts/descubrir_fuentes.py --firms | tee /tmp/firms.txt; then
+            echo "::error::La clave de FIRMS no es válida o está agotada."
+            cat /tmp/firms.txt
+            echo "motivo=La clave de FIRMS no funciona: $(head -c 200 /tmp/firms.txt)" >> "$GITHUB_OUTPUT"
+            python scripts/build_demo_data.py
+            echo "modo=demo" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if python -m incendios.pipeline -v --no-raw 2>&1 | tee /tmp/pipeline.txt; then
             mkdir -p web/public/live
             cp data/out/*.geojson data/out/*.json web/public/live/
             echo "modo=real" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning::El pipeline abortó; se publica la demo"
+            echo "::error::El pipeline abortó. Últimas líneas:"
+            tail -30 /tmp/pipeline.txt
+            echo "motivo=El pipeline abortó: $(tail -3 /tmp/pipeline.txt | head -c 200)" >> "$GITHUB_OUTPUT"
             python scripts/build_demo_data.py
             echo "modo=demo" >> "$GITHUB_OUTPUT"
           fi
@@ -103,7 +126,27 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
         run: npx vite build
 
+      # Si Pages no está activado, este paso falla con un mensaje que no dice
+      # qué hacer. `continue-on-error` permite explicarlo abajo.
       - uses: actions/configure-pages@v5
+        id: pages
+        continue-on-error: true
+
+      - name: Pages sin activar
+        if: steps.pages.outcome == 'failure'
+        run: |
+          echo "::error::GitHub Pages no está activado en este repositorio."
+          {
+            echo "## ⚠️ Falta activar GitHub Pages"
+            echo
+            echo "Todo lo demás ha funcionado: el pipeline corrió y el visor compiló."
+            echo "Solo falta un ajuste que no puede hacerse desde el workflow:"
+            echo
+            echo "**Settings → Pages → Source → GitHub Actions**"
+            echo
+            echo "Después, vuelve a lanzar este workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -120,6 +163,9 @@ jobs:
             echo "## Publicación"
             echo
             echo "- Modo: **${{ steps.pipeline.outputs.modo }}**"
+            if [ -n "${{ steps.pipeline.outputs.motivo }}" ]; then
+              echo "- Motivo de no usar datos reales: ${{ steps.pipeline.outputs.motivo }}"
+            fi
             echo "- URL: ${{ steps.despliegue.outputs.page_url }}"
             if [ -f data/out/manifest.json ]; then
               echo
