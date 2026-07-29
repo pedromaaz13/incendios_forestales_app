@@ -327,16 +327,18 @@ test('los grupos se dispersan al acercar', async ({ page }) => {
   // aquel día; al regenerar la demo el sitio se quedó vacío y el test falló sin
   // que hubiera ninguna regresión. Es la misma trampa que ya nos costó las
   // fechas congeladas.
-  await abrir(page);
-  const centro = await page.evaluate(() => {
-    const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
-    const f = m?.querySourceFeatures('incidentes', { filter: ['!', ['has', 'point_count']] })[0];
-    const c = (f?.geometry as GeoJSON.Point | undefined)?.coordinates;
-    return c ? { lon: c[0], lat: c[1] } : null;
-  });
-  expect(centro).not.toBeNull();
+  // La coordenada se lee del GeoJSON publicado y no del mapa: `querySourceFeatures`
+  // solo devuelve lo que hay en las teselas ya cargadas, y a zoom inicial una
+  // fuente agrupada puede no tener ni un punto suelto que devolver.
+  const datos = await (await page.request.get('/live/incidents.geojson')).json();
+  const centro = datos.features
+    .map((f: GeoJSON.Feature) => (f.geometry as GeoJSON.Point).coordinates)
+    // Canarias fuera: a zoom 11 sobre el Atlántico no hay nada más que mirar y
+    // el encuadre no representa el caso que la prueba quiere comprobar.
+    .find((c: number[]) => c[0] > -10 && c[0] < 4 && c[1] > 36 && c[1] < 44);
+  expect(centro).toBeTruthy();
 
-  await page.goto(`/?lat=${centro!.lat}&lon=${centro!.lon}&zoom=11`);
+  await page.goto(`/?lat=${centro[1]}&lon=${centro[0]}&zoom=11`);
   await page.waitForTimeout(2000);
 
   const cuenta = await page.evaluate(() => {

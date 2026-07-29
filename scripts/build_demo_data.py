@@ -16,6 +16,7 @@ Uso:  PYTHONPATH=src python scripts/build_demo_data.py
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -25,10 +26,12 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from incendios import aire as aire_mod
 from incendios import build as build_mod
 from incendios import clean as clean_mod
 from incendios import cluster as cluster_mod
 from incendios import merge as merge_mod
+from incendios import trafico as trafico_mod
 from incendios import validate as validate_mod
 from incendios import wind as wind_mod
 from incendios.health import HealthReport, SourceHealth
@@ -184,6 +187,94 @@ def construir_viento() -> gpd.GeoDataFrame:
     return wind_mod.to_gdf(pd.DataFrame(filas)[wind_mod.WIND_SCHEMA])
 
 
+def construir_aire() -> gpd.GeoDataFrame:
+    """Calidad del aire sintética sobre la misma rejilla que el viento.
+
+    Se genera aquí porque el E2E comprueba que el conmutador monta su capa, y sin
+    el fichero la prueba fallaba con un 404 que parecía un fallo del frontend. Los
+    valores salen de una gamma recortada a 0-140: reparte el peso en los tramos
+    bajos, que es como se comporta el índice real, y llega a "muy mala" lo justo
+    para que la leyenda tenga algo que enseñar.
+    """
+    filas = []
+    for nombre, lat, lon in wind_mod.GRID_POINTS:
+        aqi = float(np.clip(rng.gamma(2.2, 12.0), 3, 140))
+        filas.append(
+            {
+                "name": nombre,
+                "latitude": lat,
+                "longitude": lon,
+                "aqi": round(aqi, 1),
+                "nivel": aire_mod.nivel(aqi),
+                "pm2_5": round(float(np.clip(rng.gamma(2.0, 6.0), 1, 90)), 1),
+                "pm10": round(float(np.clip(rng.gamma(2.4, 9.0), 2, 160)), 1),
+                "co": round(float(np.clip(rng.gamma(2.0, 120.0), 40, 2400)), 1),
+                "observed_at": NOW.strftime("%Y-%m-%dT%H:%M"),
+            }
+        )
+    return aire_mod.to_gdf(pd.DataFrame(filas)[aire_mod.AIRE_SCHEMA])
+
+
+def construir_trafico(official: pd.DataFrame) -> gpd.GeoDataFrame:
+    """Cortes de carretera sintéticos.
+
+    Los `por_incendio` se colocan **junto a incendios reales del juego de datos**
+    en lugar de al azar. No es cosmética: la capa distingue el corte declarado por
+    la DGT como causado por fuego del resto, y con puntos dispersos esa distinción
+    no se podría comprobar mirando el mapa de la demo.
+
+    Aun así el `por_incendio` sigue siendo un dato declarado, no deducido de la
+    proximidad, igual que en producción.
+    """
+    filas = []
+
+    for i, (_, inc) in enumerate(official.head(4).iterrows()):
+        filas.append(
+            {
+                "id": f"demo-fuego-{i}",
+                "causa": "incendio forestal",
+                "detalle": "Corte por incendio forestal en las inmediaciones",
+                "cierre": "carretera cerrada",
+                "por_incendio": True,
+                "carretera": f"N-{320 + i}",
+                "pk": round(float(rng.uniform(5, 180)), 1),
+                "municipio": inc.get("municipio"),
+                "provincia": inc.get("provincia"),
+                "comunidad": None,
+                "latitude": float(inc["latitude"]) + float(rng.normal(0, 0.03)),
+                "longitude": float(inc["longitude"]) + float(rng.normal(0, 0.03)),
+                "desde": (NOW - pd.Timedelta(hours=float(rng.uniform(1, 20)))).isoformat(),
+                "actualizado": NOW.isoformat(),
+                "edad_dias": 0,
+            }
+        )
+
+    otras = ("obras", "accidente", "meteorología adversa", "manifestación")
+    for i in range(24):
+        horas = float(rng.uniform(1, 60))
+        filas.append(
+            {
+                "id": f"demo-otro-{i}",
+                "causa": str(rng.choice(otras)),
+                "detalle": "Circulación interrumpida",
+                "cierre": str(rng.choice(list(trafico_mod.CIERRES.values()))),
+                "por_incendio": False,
+                "carretera": f"A-{int(rng.integers(1, 92))}",
+                "pk": round(float(rng.uniform(1, 400)), 1),
+                "municipio": None,
+                "provincia": None,
+                "comunidad": None,
+                "latitude": round(float(rng.uniform(36.2, 43.6)), 4),
+                "longitude": round(float(rng.uniform(-8.8, 3.2)), 4),
+                "desde": (NOW - pd.Timedelta(hours=horas)).isoformat(),
+                "actualizado": NOW.isoformat(),
+                "edad_dias": int(horas // 24),
+            }
+        )
+
+    return trafico_mod.to_gdf(pd.DataFrame(filas)[trafico_mod.TRAFICO_SCHEMA])
+
+
 def construir_salud(official: pd.DataFrame) -> HealthReport:
     informe = HealthReport()
     informe.add(SourceHealth(
@@ -309,8 +400,12 @@ def main() -> None:
     _escribe(hotspots_web, DESTINO / "hotspots.geojson")
     _escribe(perimeters, DESTINO / "perimeters.geojson")
     _escribe(construir_viento(), DESTINO / "wind.geojson")
+    _escribe(construir_aire(), DESTINO / "aire.geojson")
+    _escribe(construir_trafico(official), DESTINO / "trafico.geojson")
     informe.write(DESTINO / "sources.json", now=NOW.to_pydatetime())
     build_mod.write_manifest(manifest, DESTINO / "manifest.json")
+
+    _reflejar_en_dist()
 
     print(f"\nDemo escrita en {DESTINO}")
     print(f"  incidentes : {len(web)}")
@@ -319,6 +414,29 @@ def main() -> None:
     print(f"  degradado  : {manifest['degraded']} ({manifest['degraded_reason']})")
     for f in sorted(DESTINO.iterdir()):
         print(f"  {f.name:24s} {f.stat().st_size / 1024:7.1f} KB")
+
+
+def _reflejar_en_dist() -> None:
+    """Copia la demo a `web/dist/live/` si esa carpeta ya existe.
+
+    Vite copia `public/` dentro de `dist/` **durante la compilación**, así que
+    los datos generados después de compilar no llegan solos. El E2E se sirve con
+    `vite preview`, que sirve `dist/`: sin esto, las peticiones de `.json`
+    reciben el `index.html` del fallback SPA y los tests fallan con
+    "Unexpected token '<'", que no se parece en nada a la causa real.
+
+    Es idempotente y no crea `dist/` si no está: en desarrollo se sirve
+    `public/` directamente y esta copia sobra.
+    """
+    dist = DESTINO.parents[1] / "dist" / "live"
+    if not dist.parent.is_dir():
+        return
+
+    dist.mkdir(parents=True, exist_ok=True)
+    for fichero in DESTINO.iterdir():
+        if fichero.is_file():
+            shutil.copy2(fichero, dist / fichero.name)
+    print(f"Reflejada en {dist}")
 
 
 def _escribe(gdf: gpd.GeoDataFrame, path: Path) -> None:
