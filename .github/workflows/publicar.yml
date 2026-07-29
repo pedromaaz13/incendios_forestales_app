@@ -102,6 +102,11 @@ jobs:
         id: pipeline
         env:
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          # AEMET aporta los avisos oficiales de meteorología adversa y el
+          # índice de riesgo de incendio. No es crítica: si falta, esas capas se
+          # marcan como no disponibles y el resto del pipeline sigue igual, así
+          # que no tiene la comprobación dura que sí tiene FIRMS.
+          AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
           PYTHONPATH: src
         run: |
           # Caer a la demo sin decir por qué convierte un problema de
