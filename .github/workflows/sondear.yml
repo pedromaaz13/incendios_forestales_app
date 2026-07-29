@@ -1,0 +1,88 @@
+name: sondear
+
+# Ejecuta las sondas de descubrimiento **dentro de Actions**, que es el único
+# sitio donde viven las claves.
+#
+# El agente que escribe el código no puede leer los secretos del repositorio ni
+# tiene salida a internet, así que sin esto habría que duplicar cada clave en un
+# `.env` local solo para mirar un esquema. Aquí se ejecuta donde ya están, y el
+# resultado queda en el resumen del job para poder pegarlo en una conversación.
+#
+# No publica nada ni toca las salidas: solo consulta y describe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sonda:
+        description: "Qué sondear"
+        type: choice
+        default: aemet
+        options: [aemet, firms, candidatas]
+      url:
+        description: "URL concreta a sondear (opcional, tiene prioridad)"
+        type: string
+        required: false
+      id:
+        description: "source_id para guardar el fixture (jcyl, infoca, ...)"
+        type: string
+        required: false
+  push:
+    # Al fusionar un cambio en la sonda se ejecuta una vez, para ver el
+    # resultado sin tener que lanzarlo a mano.
+    branches: [main]
+    paths:
+      - "scripts/descubrir_fuentes.py"
+      - ".github/workflows/sondear.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  sondear:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -q httpx
+
+      - name: Sondear
+        env:
+          AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          INCENDIOS_CONTACTO: ${{ github.repository_owner }}@users.noreply.github.com
+          PYTHONPATH: src
+          SONDA: ${{ inputs.sonda || 'aemet' }}
+          URL_SONDA: ${{ inputs.url }}
+          ID_SONDA: ${{ inputs.id }}
+        run: |
+          set -o pipefail
+          if [ -n "$URL_SONDA" ]; then
+            ARGS=(--url "$URL_SONDA")
+            [ -n "$ID_SONDA" ] && ARGS+=(--id "$ID_SONDA")
+          else
+            ARGS=(--"$SONDA")
+          fi
+
+          # `|| true`: la sonda sale con código distinto de cero cuando la clave
+          # falla, y ese caso también hay que poder verlo en el resumen.
+          python scripts/descubrir_fuentes.py "${ARGS[@]}" 2>&1 | tee /tmp/sonda.txt || true
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Sonda: ${{ inputs.sonda || 'aemet' }}"
+            echo
+            echo '```'
+            # Se recorta: un esquema completo puede pasar del límite del resumen.
+            head -c 60000 /tmp/sonda.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
