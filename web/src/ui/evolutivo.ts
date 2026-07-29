@@ -115,3 +115,56 @@ export function pintarEvolutivo(
     });
   }
 }
+
+
+/**
+ * Mini-evolutivo de un solo incendio, para la ficha.
+ *
+ * Reutiliza `agruparPorDia` sobre los focos de ese `fire_id`, así que cuenta
+ * exactamente lo mismo que el gráfico general: focos detectados, no hectáreas.
+ * No es interactivo —seleccionar un día dentro de una ficha ya abierta sería
+ * un segundo filtro compitiendo con el de arriba— y por eso se dibuja como
+ * barras planas sin botones.
+ *
+ * Se devuelve cadena vacía cuando no hay focos: un incendio confirmado solo por
+ * parte oficial no tiene serie que enseñar, y una caja vacía con título se lee
+ * como un fallo de carga.
+ */
+export function evolutivoDeIncendio(
+  hotspots: Array<Pick<PropiedadesHotspot, 'acq_dt'>>,
+  ahora = new Date(),
+): string {
+  const dias = agruparPorDia(hotspots, ahora);
+  if (dias.length === 0) return '';
+
+  const maximo = Math.max(...dias.map((d) => d.focos), 1);
+
+  return `
+    <div class="ficha__seccion">
+      <h3>Evolución de este incendio</h3>
+      <div class="mini-evolutivo" role="img"
+           aria-label="Focos detectados por día: ${dias
+             .map((d) => `${d.etiqueta}, ${d.focos}`)
+             .join('; ')}">
+        ${dias
+          .map((d) => {
+            const alto = Math.max(6, Math.round((d.focos / maximo) * 100));
+            return `
+              <div class="mini-evolutivo__dia" data-parcial="${d.parcial}"
+                   title="${numero(d.focos)} focos el ${d.etiqueta}${
+                     d.parcial ? ' · día en curso, incompleto' : ''
+                   }">
+                <span class="mini-evolutivo__cifra">${numero(d.focos)}</span>
+                <span class="mini-evolutivo__columna" style="height:${alto}%"></span>
+                <span class="mini-evolutivo__dia-etq">${d.etiqueta}</span>
+              </div>`;
+          })
+          .join('')}
+      </div>
+      <p class="ficha__estimacion">
+        Focos detectados por día en este incendio. Una bajada puede ser que
+        remita, pero también nubes o una pasada de satélite que aún no ha
+        ocurrido${dias.some((d) => d.parcial) ? '; la última barra es del día en curso' : ''}.
+      </p>
+    </div>`;
+}

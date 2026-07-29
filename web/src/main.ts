@@ -44,7 +44,7 @@ import {
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
 import { agruparPorDia, pintarEvolutivo, type DiaEvolutivo } from './ui/evolutivo';
-import { abrirFicha, cerrarFicha } from './ui/ficha';
+import { abrirFicha, cerrarFicha, registrarFocos } from './ui/ficha';
 import {
   FILTROS_INICIALES,
   aplicar as aplicarFiltros,
@@ -361,6 +361,19 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
       datos.features.map((f) => f.properties as { acq_dt: string }),
     );
     refrescarEvolutivo(mapa);
+
+    // Los mismos focos, indexados por incendio, para el evolutivo de la ficha.
+    // Se agrupa una vez al cargar y no en cada apertura: son decenas de miles
+    // de rasgos y recorrerlos con cada clic se nota en móvil.
+    const porIncendio = new Map<string, Array<{ acq_dt: string }>>();
+    for (const f of datos.features) {
+      const props = f.properties as { fire_id?: string; acq_dt: string } | null;
+      if (!props?.fire_id) continue;
+      const lista = porIncendio.get(props.fire_id);
+      if (lista) lista.push(props);
+      else porIncendio.set(props.fire_id, [props]);
+    }
+    registrarFocos(porIncendio);
   }
 
   if (capa === 'perimetros') {
@@ -709,21 +722,44 @@ function pintarLeyenda(): void {
   nodo.hidden = false;
   nodo.innerHTML = `
     <h3>Leyenda</h3>
+    <p class="leyenda__grupo">Intensidad de la anomalía térmica</p>
     <div class="leyenda__fila">
-      <span class="leyenda__muestra" style="background:#ffe08a"></span> Intensidad baja
+      <span class="leyenda__muestra leyenda__muestra--punto" style="--c:#ffd93d"></span>
+      Baja <span class="leyenda__nota">FRP bajo o pocos focos</span>
     </div>
     <div class="leyenda__fila">
-      <span class="leyenda__muestra" style="background:#f05a28"></span> Intensidad alta
+      <span class="leyenda__muestra leyenda__muestra--punto" style="--c:#f05a28"></span>
+      Alta
     </div>
     <div class="leyenda__fila">
-      <span class="leyenda__muestra" style="background:#c81e1e"></span> Intensidad extrema
+      <span class="leyenda__muestra leyenda__muestra--punto" style="--c:#c81e1e"></span>
+      Extrema
+    </div>
+    <!-- La intensidad es potencia radiativa detectada, no gravedad del suceso.
+         Se dice explícitamente porque el color rojo invita a leerlo como
+         "peligro" y un incendio pequeño junto a casas es más grave que uno
+         extremo en despoblado. -->
+    <p class="leyenda__aviso">
+      Mide el <b>calor detectado</b> desde el satélite, no la gravedad ni la
+      cercanía a población.
+    </p>
+
+    <p class="leyenda__grupo">Cómo se ha confirmado</p>
+    <div class="leyenda__fila">
+      <span class="leyenda__muestra leyenda__muestra--oficial"></span>
+      Confirmado por <b>parte oficial</b> (borde grueso)
+    </div>
+    <div class="leyenda__fila">
+      <span class="leyenda__muestra leyenda__muestra--punto" style="--c:#f05a28"></span>
+      Solo <b>detección satelital</b>
     </div>
     <div class="leyenda__fila">
       <span class="leyenda__muestra leyenda__muestra--anillo"></span>
-      Margen de posición de la fuente
+      Margen de posición que declara la fuente
     </div>
-    <div class="leyenda__fila leyenda__fila--texto">
-      Borde grueso: confirmado por parte oficial
+    <div class="leyenda__fila">
+      <span class="leyenda__muestra leyenda__muestra--grupo">7</span>
+      Varios incendios juntos: la cifra los cuenta. Acerca para separarlos
     </div>
     ${
       estado.capas.viento

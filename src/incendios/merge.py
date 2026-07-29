@@ -61,6 +61,10 @@ INCIDENT_SCHEMA = [
     "resources_ground",
     "resources_people",
     "n_hotspots",
+    # Qué sensores vieron este incendio. Se publica porque cambia cómo hay que
+    # leerlo: un incendio visto solo por MODIS tiene 1 km de resolución frente a
+    # los 375 m de VIIRS, y la ficha debe poder decirlo.
+    "sensors",
     "frp_total_mw",
     "intensity",
     "area_est_ha",

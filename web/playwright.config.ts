@@ -31,9 +31,18 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run preview -- --port 4173 --strictPort',
+    // Se compila **aquí** y no antes: `vite preview` sirve `dist/`, y `dist/`
+    // solo tiene los datos si `public/live/` ya existía en el momento del
+    // build. En CI el orden era compilar y luego generar los datos, así que
+    // `dist/live/` quedaba vacío, cada `fetch` de JSON recibía el `index.html`
+    // del fallback y las pruebas fallaban con "Unexpected token '<'". En local
+    // no se veía porque `public/live/` conserva los datos de la vez anterior.
+    // Compilando dentro del arranque del servidor, los datos ya están puestos
+    // llegue como llegue.
+    command: 'npx vite build && npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173',
     reuseExistingServer: true,
-    timeout: 60_000,
+    // El build tarda unos segundos más que arrancar el preview a secas.
+    timeout: 120_000,
   },
 });

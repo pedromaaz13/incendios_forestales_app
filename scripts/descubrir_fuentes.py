@@ -41,7 +41,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -275,6 +277,67 @@ def comprobar_firms() -> None:
     print("    del repositorio, con el nombre FIRMS_MAP_KEY.")
 
 
+def _describir_carga(bruto: bytes, tipo: str) -> None:
+    """Describe qué hay dentro de una respuesta de AEMET.
+
+    Cada endpoint devuelve una cosa distinta —JSON, XML CAP, un TAR.GZ de XML,
+    o un PNG— y el adaptador que haya que escribir depende de cuál sea. Esto
+    imprime lo justo para decidirlo sin volcar megabytes en el resumen del job.
+    """
+    import gzip
+    import io
+    import tarfile
+
+    # TAR.GZ: los avisos CAP vienen empaquetados, uno por zona.
+    if bruto[:2] == b"\x1f\x8b":
+        try:
+            with tarfile.open(fileobj=io.BytesIO(gzip.decompress(bruto))) as t:
+                nombres = t.getnames()
+                print(f"      TAR.GZ con {len(nombres)} ficheros")
+                for n in nombres[:5]:
+                    print(f"        · {n}")
+                primero = next((m for m in t.getmembers() if m.isfile()), None)
+                if primero:
+                    dentro = t.extractfile(primero)
+                    if dentro:
+                        _describir_carga(dentro.read(), "application/xml")
+        except Exception as exc:
+            print(f"      GZIP ilegible: {exc}")
+        return
+
+    if bruto[:8] == b"\x89PNG\r\n\x1a\n":
+        print("      PNG · es un mapa rasterizado, no datos vectoriales")
+        return
+
+    texto = bruto.decode("utf-8", errors="replace").strip()
+
+    if texto[:1] in "{[":
+        try:
+            objeto = json.loads(texto)
+        except Exception as exc:
+            print(f"      JSON ilegible: {exc}")
+            return
+        muestra = objeto[0] if isinstance(objeto, list) and objeto else objeto
+        if isinstance(muestra, dict):
+            print(f"      claves: {', '.join(sorted(muestra)[:25])}")
+            print(f"      primer registro:\n{json.dumps(muestra, ensure_ascii=False, indent=2)[:2500]}")
+        else:
+            print(f"      {texto[:1500]}")
+        return
+
+    if texto[:1] == "<":
+        # Etiquetas por frecuencia: da la forma del documento sin volcarlo.
+        etiquetas = re.findall(r"<([A-Za-z_][\w:.-]*)", texto)
+        cuenta = Counter(etiquetas)
+        print(f"      XML · {len(cuenta)} etiquetas distintas")
+        for nombre, n in cuenta.most_common(30):
+            print(f"        {n:>5}  {nombre}")
+        print(f"      cabecera:\n{texto[:2000]}")
+        return
+
+    print(f"      texto plano:\n{texto[:1500]}")
+
+
 def comprobar_aemet() -> None:
     """Verifica AEMET_API_KEY y enseña qué desbloquea.
 
@@ -326,7 +389,25 @@ def comprobar_aemet() -> None:
             continue
 
         print(f"  ✓ {descripcion}")
-        print(f"      datos en: {datos.get('datos', '')[:100]}")
+
+        # Seguir hasta los datos de verdad. El sobre solo dice "hay algo ahí";
+        # lo que hace falta para escribir un adaptador es el esquema real, y
+        # adivinarlo es exactamente lo que este proyecto no hace.
+        enlace = datos.get("datos", "")
+        if not enlace:
+            print("      sin enlace de datos en el sobre")
+            continue
+
+        try:
+            with cliente() as c:
+                d = c.get(enlace)
+        except Exception as exc:
+            print(f"      ✕ el enlace de datos no responde ({exc})")
+            continue
+
+        tipo = d.headers.get("content-type", "?")
+        print(f"      {len(d.content)} bytes · {tipo}")
+        _describir_carga(d.content, tipo)
 
     print("\n    Si las dos salen con ✓, mete la clave en Settings → Secrets and")
     print("    variables → Actions del repositorio, con el nombre AEMET_API_KEY,")

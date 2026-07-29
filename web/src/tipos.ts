@@ -27,6 +27,10 @@ export interface PropiedadesIncidente {
   resources_people: number | null;
   resources_text?: string | null;
   n_hotspots: number;
+  /** Qué sensores lo vieron. Cambia la resolución con que se conoce. */
+  sensors: string | null;
+  /** Radio equivalente del área estimada, en km. Misma estimación, otra forma. */
+  radio_est_km: number | null;
   frp_total_mw: number | null;
   intensity: Intensidad | null;
   area_est_ha: number | null;

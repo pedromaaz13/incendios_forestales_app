@@ -19,8 +19,24 @@ import {
   listaFuentes,
   margenPosicion,
   numero,
+  resolucionSensor,
+  sensores,
 } from '../formato';
-import type { PropiedadesIncidente } from '../tipos';
+import { evolutivoDeIncendio } from './evolutivo';
+import type { PropiedadesHotspot, PropiedadesIncidente } from '../tipos';
+
+/**
+ * Focos del incendio abierto. Los inyecta `main.ts` al cargar los datos, en
+ * lugar de que la ficha lea el GeoJSON por su cuenta: así la ficha sigue siendo
+ * una función de sus propiedades y se puede probar sin red.
+ */
+let focosPorIncendio: Map<string, Array<Pick<PropiedadesHotspot, 'acq_dt'>>> = new Map();
+
+export function registrarFocos(
+  porIncendio: Map<string, Array<Pick<PropiedadesHotspot, 'acq_dt'>>>,
+): void {
+  focosPorIncendio = porIncendio;
+}
 
 function texto(valor: string | null | undefined): string {
   const d = document.createElement('div');
@@ -36,6 +52,7 @@ export function abrirFicha(p: PropiedadesIncidente, alCerrar: () => void): void 
   const ficha = document.getElementById('ficha')!;
   ficha.hidden = false;
   ficha.innerHTML = contenido(p);
+  ficha.scrollTop = 0;
 
   const cerrar = ficha.querySelector<HTMLButtonElement>('.ficha__cerrar')!;
   cerrar.addEventListener('click', alCerrar);
@@ -68,6 +85,7 @@ function contenido(p: PropiedadesIncidente): string {
 
     ${bloqueOficial(p)}
     ${bloqueSatelital(p)}
+    ${evolutivoDeIncendio(focosPorIncendio.get(p.id) ?? [])}
 
     <div class="ficha__seccion">
       <h3>Precisión de la posición</h3>
@@ -120,18 +138,30 @@ function bloqueSatelital(p: PropiedadesIncidente): string {
   return `
     <div class="ficha__seccion">
       <h3>Detección satelital</h3>
+      ${dato('Fuente', texto(sensores(p.sensors)))}
       ${dato('Focos detectados', numero(p.n_hotspots))}
       ${dato('FRP acumulado', `${numero(p.frp_total_mw, 1)} MW`)}
       ${dato('Primera detección', fechaHora(p.first_detected))}
       ${dato('Última detección', fechaHora(p.last_detected))}
+      <p class="ficha__pista">
+        Acerca el mapa para ver los ${numero(p.n_hotspots)} focos por separado.
+      </p>
       ${
         p.area_est_ha !== null
           ? `
         ${dato('Superficie estimada', `${numero(p.area_est_ha)} ha`)}
+        ${
+          p.radio_est_km !== null && p.radio_est_km !== undefined
+            ? dato('Equivale a un radio de', `${numero(p.radio_est_km, 1)} km`)
+            : ''
+        }
         <p class="ficha__estimacion">
           <strong>Superficie estimada</strong>, no medida. Se deriva del número
-          de píxeles con anomalía térmica y es una aproximación por defecto: el
-          área real puede ser mayor.
+          de píxeles con anomalía térmica${
+            resolucionSensor(p.sensors)
+              ? `, de ${resolucionSensor(p.sensors)} de lado`
+              : ''
+          } y es una aproximación por defecto: el área real puede ser mayor.
         </p>`
           : ''
       }
