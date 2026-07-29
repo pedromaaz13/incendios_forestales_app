@@ -16,7 +16,7 @@ export default defineConfig({
   reporter: process.env.CI ? [['github'], ['list']] : [['list']],
 
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://localhost:4173',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     // Chromium de sistema: el entorno lo trae preinstalado y descargarlo otra
@@ -32,7 +32,7 @@ export default defineConfig({
 
   webServer: {
     command: 'npm run preview -- --port 4173 --strictPort',
-    url: 'http://127.0.0.1:4173',
+    url: 'http://localhost:4173',
     reuseExistingServer: true,
     timeout: 60_000,
   },

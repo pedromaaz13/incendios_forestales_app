@@ -79,13 +79,35 @@ export function filtroHotspots(f: EstadoFiltros): FilterSpecification {
   ] as FilterSpecification;
 }
 
-export function aplicar(mapa: MapaGL, f: EstadoFiltros): void {
-  const incidentes = filtroIncidentes(f);
+export function aplicar(
+  mapa: MapaGL,
+  f: EstadoFiltros,
+  dia: string | null = null,
+): void {
+  // `!has point_count` va en todos los filtros de estas capas: sin él, al
+  // aplicar un filtro se perdería la exclusión de los globos de grupo y los
+  // incidentes agrupados se pintarían dos veces, como globo y como punto.
+  const incidentes = [
+    'all',
+    ['!', ['has', 'point_count']],
+    filtroIncidentes(f),
+  ] as unknown as FilterSpecification;
+
   for (const capa of [CAPA_INCIDENTES, CAPA_INCERTIDUMBRE]) {
     if (mapa.getLayer(capa)) mapa.setFilter(capa, incidentes);
   }
   if (mapa.getLayer(CAPA_HOTSPOTS)) {
-    mapa.setFilter(CAPA_HOTSPOTS, filtroHotspots(f));
+    // El día elegido en el evolutivo se aplica solo a los focos. Los incidentes
+    // no se tocan: un incendio puede arder varios días y esconderlo porque su
+    // última detección no cae en el día elegido daría a entender que no existía.
+    const porDia = dia
+      ? ([
+          'all',
+          filtroHotspots(f),
+          ['==', ['slice', ['coalesce', ['get', 'acq_dt'], ''], 0, 10], dia],
+        ] as unknown as FilterSpecification)
+      : filtroHotspots(f);
+    mapa.setFilter(CAPA_HOTSPOTS, porDia);
   }
 }
 

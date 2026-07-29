@@ -9,28 +9,41 @@
  */
 
 :root {
-  --ground: #0f1619;
-  --panel: rgba(19, 28, 33, 0.92);
-  --panel-solido: #131c21;
-  --line: #26343b;
-  --ink: #dce6e9;
-  --muted: #7d9199;
-  --cool: #4e8fa8;
+  /* Fondo con un punto de calidez: el gris azulado anterior competía con el
+     mapa base claro y hacía que los paneles parecieran apagados al lado. */
+  --ground: #0d1117;
+  --panel: rgba(20, 26, 35, 0.94);
+  --panel-solido: #141a23;
+  --panel-alto: #1b232e;
+  --line: #2a3543;
+  --ink: #e8eef5;
+  --muted: #8b9bb0;
+  --cool: #4aa8d8;
+  --cool-vivo: #5cc9ff;
 
-  /* Rampa de brasa · baja · media · alta · extrema */
-  --e1: #ffe08a;
-  --e2: #ffa23a;
-  --e3: #f05a28;
-  --e4: #c81e1e;
+  /* Rampa de brasa, saturada. Los tonos anteriores estaban desaturados para
+     no competir con el fondo frío; con el fondo nuevo pueden brillar, y el
+     contraste con el mapa base claro mejora en las cuatro paradas. */
+  --e1: #ffd93d;
+  --e2: #ff9f1c;
+  --e3: #ff5714;
+  --e4: #e01e37;
 
-  /* Semáforo de latencia y de estado de fuente (RF-F-05, RF-F-06) */
-  --ok: #4ac97e;
-  --warn: #ffb020;
-  --bad: #ff5a4d;
+  /* Halo de los incendios: da profundidad sin tapar el mapa. */
+  --brillo-e3: rgba(255, 87, 20, 0.35);
+  --brillo-e4: rgba(224, 30, 55, 0.4);
 
-  --radius: 4px;
+  --ok: #2ee6a8;
+  --warn: #ffc233;
+  --bad: #ff4d6d;
+
+  --radius: 6px;
+  --radius-g: 10px;
   --cabecera-alto: 68px;
   --aviso-alto: 34px;
+
+  --sombra: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --sombra-alta: 0 12px 40px rgba(0, 0, 0, 0.6);
 
   color-scheme: dark;
 }
@@ -109,13 +122,25 @@ body {
   z-index: 5;
   flex: 0 0 auto;
   min-height: var(--cabecera-alto);
+  /* La línea de brasa bajo la cabecera es la única decoración del cromo: da
+     identidad sin robar atención al mapa, que es donde está la información. */
+  background: linear-gradient(180deg, #1a222e 0%, var(--panel-solido) 100%);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--sombra);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 0 16px;
-  background: var(--panel-solido);
-  border-bottom: 1px solid var(--line);
+}
+
+.cabecera::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -1px 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--e4), var(--e3), var(--e2), var(--e1));
+  opacity: 0.85;
 }
 
 .marca {
@@ -130,17 +155,32 @@ body {
   white-space: nowrap;
 }
 .marca__icono {
-  font-size: 20px;
+  font-size: 22px;
+  filter: drop-shadow(0 0 8px var(--brillo-e3));
+}
+
+.marca__texto {
+  background: linear-gradient(90deg, var(--ink), var(--e1));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .latencia {
   display: flex;
   align-items: stretch;
-  gap: 14px;
-  padding: 6px 12px;
+  gap: 16px;
+  padding: 7px 14px;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-g);
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.latencia__valor[data-nivel="ok"] {
+  text-shadow: 0 0 14px rgba(46, 230, 168, 0.4);
+}
+.latencia__valor[data-nivel="bad"] {
+  text-shadow: 0 0 14px rgba(255, 77, 109, 0.45);
 }
 .latencia__bloque {
   display: flex;
@@ -219,8 +259,9 @@ body {
 .panel {
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--panel-solido);
+  background: linear-gradient(180deg, var(--panel-alto) 0%, var(--panel-solido) 220px);
   scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
 }
 .panel--izq {
   border-right: 1px solid var(--line);
@@ -331,7 +372,7 @@ body {
 }
 .resumen b {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 500;
   color: var(--ink);
   min-width: 46px;
@@ -359,10 +400,16 @@ body {
   border-radius: 999px;
   cursor: pointer;
 }
-.conmutador[aria-pressed="true"] {
+.conmutador:hover {
   color: var(--ink);
-  border-color: var(--cool);
-  background: rgba(78, 143, 168, 0.14);
+  border-color: var(--muted);
+}
+.conmutador[aria-pressed="true"] {
+  color: #061018;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--cool-vivo), var(--cool));
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(74, 168, 216, 0.35);
 }
 
 .segmentado {
@@ -385,9 +432,14 @@ body {
 .segmentado button:last-child {
   border-right: 0;
 }
-.segmentado button[aria-checked="true"] {
+.segmentado button:hover {
   color: var(--ink);
-  background: rgba(78, 143, 168, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+.segmentado button[aria-checked="true"] {
+  color: #061018;
+  background: linear-gradient(135deg, var(--cool-vivo), var(--cool));
+  font-weight: 600;
 }
 
 .credito {
@@ -485,9 +537,10 @@ body {
 /* --- lista de incidentes (RF-F-07) ------------------------------------ */
 
 .tarjeta {
+  position: relative;
   display: block;
   width: 100%;
-  padding: 10px 14px;
+  padding: 10px 14px 10px 17px;
   text-align: left;
   font: inherit;
   color: inherit;
@@ -496,9 +549,25 @@ body {
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
+/* Barra de intensidad en el borde: se lee de un vistazo al recorrer la lista,
+   sin tener que parar en cada tarjeta. */
+.tarjeta::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--muted);
+}
+.tarjeta[data-intensidad="baja"]::before { background: var(--e1); }
+.tarjeta[data-intensidad="media"]::before { background: var(--e2); }
+.tarjeta[data-intensidad="alta"]::before { background: var(--e3); }
+.tarjeta[data-intensidad="extrema"]::before {
+  background: var(--e4);
+  box-shadow: 0 0 12px var(--brillo-e4);
+}
 .tarjeta:hover,
 .tarjeta[data-resaltada="true"] {
-  background: rgba(78, 143, 168, 0.1);
+  background: linear-gradient(90deg, rgba(74, 168, 216, 0.14), transparent);
 }
 .tarjeta__cabecera {
   display: flex;
@@ -762,4 +831,81 @@ body {
 .filtro__rotulo {
   font-size: 10px;
   color: var(--muted);
+}
+
+
+/* --- evolución diaria ------------------------------------------------- */
+
+.evolutivo__barras {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 92px;
+}
+.evolutivo__barra {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.evolutivo__cifra {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.evolutivo__columna {
+  width: 100%;
+  min-height: 4px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, var(--e2), var(--e4));
+  transition: filter 0.15s ease;
+}
+/* El día en curso va rayado: la barra baja porque está incompleto, no porque
+   el fuego remita, y leerlo como mejoría es el error fácil de este gráfico. */
+.evolutivo__barra[data-parcial="true"] .evolutivo__columna {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--e2) 0 4px,
+    rgba(255, 159, 28, 0.3) 4px 8px
+  );
+}
+.evolutivo__barra:hover .evolutivo__columna {
+  filter: brightness(1.25);
+}
+.evolutivo__barra[aria-pressed="true"] .evolutivo__columna {
+  outline: 2px solid var(--cool-vivo);
+  outline-offset: 1px;
+}
+.evolutivo__barra[aria-pressed="true"] .evolutivo__cifra {
+  color: var(--ink);
+  font-weight: 600;
+}
+.evolutivo__dia {
+  font-size: 9px;
+  color: var(--muted);
+}
+.evolutivo__pie {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+
+/* Lienzo de las partículas de viento. `pointer-events: none` es esencial: sin
+   él taparía el mapa y no se podría pulsar ningún incendio. */
+.viento-animado {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
 }

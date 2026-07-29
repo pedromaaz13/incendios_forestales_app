@@ -1,3 +1,4 @@
+import type maplibregl from 'maplibre-gl';
 import { expect, test } from '@playwright/test';
 
 import { abrir, conManifiesto } from './ayuda';
@@ -251,8 +252,34 @@ test('RNF-06 · la lista es alcanzable y operable con teclado', async ({ page })
 // --- RF-F-06 · estado de fuentes -------------------------------------------
 
 test('RF-F-06 · las fuentes en error van primero y con texto', async ({ page }) => {
+  // El estado de fuentes se inyecta en vez de usar el publicado: si hoy no hay
+  // ninguna caída, el test pasaría sin comprobar nada, y el día que la haya
+  // fallaría sin que nadie hubiera tocado el código.
+  await page.route('**/live/sources.json', (ruta) =>
+    ruta.fulfill({
+      json: {
+        generated_at: '2026-07-29T12:00:00Z',
+        sources: [
+          {
+            id: 'ok', name: 'Aaa correcta', region: 'España', kind: 'satelite',
+            critical: false, status: 'ok', last_success_at: '2026-07-29T11:58:00Z',
+            age_seconds: 120, ttl_seconds: 600, records: 100, precision_m: 375,
+            error: null, consecutive_failures: 0, attribution: '',
+          },
+          {
+            id: 'roto', name: 'Zzz caída', region: 'España', kind: 'oficial',
+            critical: false, status: 'error', last_success_at: null,
+            age_seconds: null, ttl_seconds: 300, records: 0, precision_m: 500,
+            error: 'HTTP 503 en el portal de origen', consecutive_failures: 3,
+            attribution: '',
+          },
+        ],
+      },
+    }),
+  );
   await abrir(page);
 
+  // Las caídas van primero aunque alfabéticamente fueran las últimas.
   const primera = page.locator('.fuente').first();
   await expect(primera).toHaveClass(/fuente--error/);
   // El estado no puede transmitirse solo por color.
@@ -273,4 +300,140 @@ test('sin municipio la tarjeta dice dónde está, no solo que no lo sabe', async
   for (const t of sinNombre) {
     expect(t).toMatch(/\d+\.\d{4}° [NS], \d+\.\d{4}° [EO]/);
   }
+});
+
+// --- agrupación numérica de incidentes -------------------------------------
+
+test('los incidentes se agrupan con su número a zoom bajo', async ({ page }) => {
+  // Matiz sobre RF-F-04: la prohibición del badge numérico es sobre hotspots,
+  // donde un "638" mezcla incendios, quemas y falsos positivos. Los incidentes
+  // ya están validados, así que un "3" sí es una afirmación sostenible.
+  await abrir(page, '/?lat=40.2&lon=-4.0&zoom=6');
+  await page.waitForTimeout(1500);
+
+  const grupos = await page.evaluate(() =>
+    (window as never as { __mapa?: maplibregl.Map }).__mapa
+      ?.queryRenderedFeatures({ layers: ['incidentes-grupo'] })
+      .map((g) => g.properties?.point_count),
+  );
+
+  expect(grupos?.length ?? 0).toBeGreaterThan(0);
+  for (const n of grupos ?? []) expect(n).toBeGreaterThan(1);
+});
+
+test('los grupos se dispersan al acercar', async ({ page }) => {
+  await abrir(page, '/?lat=40.45&lon=-4.55&zoom=10');
+  await page.waitForTimeout(1500);
+
+  const cuenta = await page.evaluate(() => {
+    const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    return {
+      grupos: m?.queryRenderedFeatures({ layers: ['incidentes-grupo'] }).length ?? -1,
+      sueltos: m?.queryRenderedFeatures({ layers: ['incidentes-simbolo'] }).length ?? -1,
+    };
+  });
+
+  expect(cuenta.grupos).toBe(0);
+  expect(cuenta.sueltos).toBeGreaterThan(0);
+});
+
+test('los hotspots nunca se agrupan', async ({ page }) => {
+  // Esto sí lo prohíbe RF-F-04 sin matices, y es la mitad de la decisión.
+  await abrir(page);
+  const capas = await page.evaluate(
+    () =>
+      (window as never as { __mapa?: maplibregl.Map }).__mapa
+        ?.getStyle()
+        .layers.map((c) => c.id) ?? [],
+  );
+
+  expect(capas.filter((c) => c.includes('hotspot') && c.includes('grupo'))).toHaveLength(0);
+});
+
+// --- evolución diaria -------------------------------------------------------
+
+test('el evolutivo marca el día en curso como incompleto', async ({ page }) => {
+  // La última barra baja porque el día no ha terminado y los satélites polares
+  // no han hecho todas sus pasadas. Leerlo como mejoría es el error fácil.
+  await abrir(page);
+  await page.waitForTimeout(1500);
+
+  await expect(page.locator('.evolutivo__barra')).not.toHaveCount(0);
+  await expect(page.locator('.evolutivo__pie')).toContainText('incompleta');
+  await expect(
+    page.locator('.evolutivo__barra[data-parcial="true"]'),
+  ).not.toHaveCount(0);
+});
+
+test('pulsar una barra filtra los focos de ese día', async ({ page }) => {
+  await abrir(page);
+  await page.waitForTimeout(1500);
+
+  const barra = page.locator('.evolutivo__barra').first();
+  await barra.click();
+  await expect(barra).toHaveAttribute('aria-pressed', 'true');
+
+  // Volver a pulsarla deselecciona: sin eso no habría forma de ver todo otra vez.
+  await barra.click();
+  await expect(barra).toHaveAttribute('aria-pressed', 'false');
+});
+
+// --- capas: todas montan y se apagan ---------------------------------------
+
+const CAPAS: Array<[string, string]> = [
+  ['hotspots', 'hotspots-punto'],
+  ['perimetros', 'perimetros-estimado'],
+  ['viento', 'viento-flecha'],
+  ['aire', 'aire-circulo'],
+  ['trafico', 'trafico-corte'],
+];
+
+for (const [conmutador, capa] of CAPAS) {
+  test(`el conmutador de ${conmutador} monta y apaga su capa`, async ({ page }) => {
+    await abrir(page);
+    await page.waitForTimeout(1200);
+
+    const boton = page.locator(`[data-capa="${conmutador}"]`);
+    const encendida = (await boton.getAttribute('aria-pressed')) === 'true';
+    if (encendida) await boton.click();
+
+    await boton.click();
+    await page.waitForTimeout(1800);
+
+    await expect(boton).toHaveAttribute('aria-pressed', 'true');
+    const montada = await page.evaluate(
+      (id) => !!(window as never as { __mapa?: maplibregl.Map }).__mapa?.getLayer(id),
+      capa,
+    );
+    expect(montada).toBe(true);
+  });
+}
+
+test('el viento activa las partículas animadas', async ({ page }) => {
+  await abrir(page);
+  await page.locator('[data-capa="viento"]').click();
+  await page.waitForTimeout(2200);
+
+  const animado = await page.evaluate(() => ({
+    capa: !!(window as never as { __mapa?: maplibregl.Map }).__mapa?.getLayer('viento-animado'),
+    lienzo: !!document.querySelector('canvas.viento-animado'),
+  }));
+
+  expect(animado.capa).toBe(true);
+  expect(animado.lienzo).toBe(true);
+});
+
+test('el lienzo de partículas no bloquea el mapa', async ({ page }) => {
+  // Sin `pointer-events: none` el lienzo taparía el mapa entero y no se podría
+  // pulsar ningún incendio: la capa de contexto inutilizaría el dato principal.
+  await abrir(page);
+  await page.locator('[data-capa="viento"]').click();
+  await page.waitForTimeout(2200);
+
+  const pasa = await page.evaluate(() => {
+    const c = document.querySelector('canvas.viento-animado');
+    return c ? getComputedStyle(c).pointerEvents : null;
+  });
+
+  expect(pasa).toBe('none');
 });
