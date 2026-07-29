@@ -190,7 +190,7 @@ export function construirControles(
       </div>
     </div>
 
-    <div class="filtro">
+    <div class="filtro" data-filtro="sensores">
       <span class="filtro__rotulo">Sensor</span>
       <div class="conmutadores" data-grupo="sensores">
         ${['VIIRS', 'MODIS', 'SEVIRI']
@@ -201,6 +201,12 @@ export function construirControles(
           )
           .join('')}
       </div>
+      <!-- El filtro de sensor solo afecta a los focos, y los focos aparecen a
+           partir de zoom 9 (RF-F-04). Sin este aviso el botón parece roto: se
+           pulsa, cambia de color y no pasa nada en el mapa. -->
+      <span class="filtro__nota" id="nota-sensores" hidden>
+        Afecta a los focos satelitales, que se muestran al acercar el mapa.
+      </span>
     </div>`;
 
   for (const grupo of nodo.querySelectorAll<HTMLElement>('[data-grupo]')) {
@@ -228,4 +234,24 @@ export function construirControles(
       });
     }
   }
+}
+
+
+/**
+ * Avisa cuando el filtro de sensor no puede tener efecto visible.
+ *
+ * Los focos aparecen a partir de zoom 9 por decisión de RF-F-04: a zoom bajo
+ * son ruido. Pero eso deja el control de sensor sin efecto observable la mayor
+ * parte del tiempo, y un botón que cambia de color sin que pase nada se lee
+ * como roto. Se atenúa y se explica en lugar de deshabilitarlo, porque la
+ * elección sigue siendo válida y se aplicará en cuanto se acerque.
+ */
+export function avisarSensoresSegunZoom(zoom: number, zoomFocos: number): void {
+  const bloque = document.querySelector<HTMLElement>('[data-filtro="sensores"]');
+  const nota = document.getElementById('nota-sensores');
+  if (!bloque || !nota) return;
+
+  const inactivo = zoom < zoomFocos;
+  bloque.dataset.inactivo = String(inactivo);
+  nota.hidden = !inactivo;
 }

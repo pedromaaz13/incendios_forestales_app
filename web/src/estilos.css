@@ -909,3 +909,16 @@ body {
   pointer-events: none;
   z-index: 2;
 }
+
+
+/* El filtro de sensor cuando su capa no está a la vista. Se atenúa en lugar de
+   deshabilitarse: la elección sigue siendo válida y se aplicará al acercar. */
+.filtro[data-inactivo="true"] .conmutadores {
+  opacity: 0.45;
+}
+.filtro__nota {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--warn);
+}

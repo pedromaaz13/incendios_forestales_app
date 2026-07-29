@@ -19,6 +19,7 @@ import {
   CAPA_TRAFICO,
   CAPA_TRAFICO_INCENDIO,
   CAPA_HOTSPOTS,
+  ZOOM_HOTSPOTS,
   CAPA_INCIDENTES,
   CAPA_PERIMETRO_EFFIS,
   CAPA_PERIMETRO_ESTIMADO,
@@ -48,6 +49,7 @@ import {
   FILTROS_INICIALES,
   aplicar as aplicarFiltros,
   construirControles as construirFiltros,
+  avisarSensoresSegunZoom,
   pasaElFiltro,
   type EstadoFiltros,
 } from './ui/filtros';
@@ -194,6 +196,10 @@ async function arrancar(): Promise<void> {
     refrescarLista();
   });
 
+  // El aviso del filtro de sensor se recalcula con el zoom, no solo al mover:
+  // así aparece y desaparece justo al cruzar el umbral en que salen los focos.
+  mapa.on('zoom', () => avisarSensoresSegunZoom(mapa.getZoom(), ZOOM_HOTSPOTS));
+
   construirSelectorEstilo(mapa);
   construirConmutadores(mapa);
   construirFiltros(document.getElementById('filtros')!, estado.filtros, {
@@ -205,6 +211,10 @@ async function arrancar(): Promise<void> {
       refrescarLista();
     },
   });
+  // Después de construir los controles: antes, el nodo del aviso no existe y
+  // la llamada no hacía nada. Al abrir directamente en zoom bajo el evento
+  // `zoom` tampoco dispara, así que hace falta esta primera pasada.
+  avisarSensoresSegunZoom(mapa.getZoom(), ZOOM_HOTSPOTS);
   pintarLeyenda();
 
   window.setInterval(() => {

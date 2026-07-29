@@ -30,52 +30,46 @@ OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 # pedir más a menudo a un servicio gratuito es abusar de él.
 TTL_SECONDS = 900
 
-# 35 puntos repartidos por la Península, Baleares y Canarias. No es una rejilla
-# regular: se densifica donde hay más masa forestal y donde el relieve hace que
-# el viento cambie en pocos kilómetros.
-GRID_POINTS: tuple[tuple[str, float, float], ...] = (
-    ("A Coruña", 43.37, -8.40),
-    ("Lugo", 43.01, -7.56),
-    ("Ourense", 42.34, -7.86),
-    ("Oviedo", 43.36, -5.85),
-    ("Santander", 43.46, -3.81),
-    ("Bilbao", 43.26, -2.93),
-    ("Pamplona", 42.82, -1.64),
-    ("León", 42.60, -5.57),
-    ("Burgos", 42.34, -3.70),
-    ("Zamora", 41.50, -5.75),
-    ("Valladolid", 41.65, -4.72),
-    ("Soria", 41.76, -2.46),
-    ("Salamanca", 40.97, -5.66),
-    ("Ávila", 40.66, -4.70),
-    ("Segovia", 40.95, -4.12),
-    ("Zaragoza", 41.65, -0.89),
-    ("Huesca", 42.14, -0.41),
-    ("Lleida", 41.62, 0.62),
-    ("Girona", 41.98, 2.82),
-    ("Barcelona", 41.39, 2.17),
-    ("Tarragona", 41.12, 1.25),
-    ("Madrid", 40.42, -3.70),
-    ("Guadalajara", 40.63, -3.16),
-    ("Cuenca", 40.07, -2.13),
-    ("Toledo", 39.86, -4.02),
-    ("Cáceres", 39.48, -6.37),
-    ("Badajoz", 38.88, -6.97),
-    ("Ciudad Real", 38.99, -3.93),
-    ("Albacete", 38.99, -1.86),
-    ("València", 39.47, -0.38),
-    ("Alacant", 38.35, -0.48),
-    ("Murcia", 37.99, -1.13),
-    ("Córdoba", 37.89, -4.78),
-    ("Sevilla", 37.39, -5.98),
-    ("Jaén", 37.77, -3.79),
-    ("Granada", 37.18, -3.60),
-    ("Málaga", 36.72, -4.42),
-    ("Huelva", 37.26, -6.95),
-    ("Palma", 39.57, 2.65),
-    ("Las Palmas", 28.12, -15.43),
-    ("Tenerife", 28.47, -16.25),
-)
+# Rejilla regular de ~0,75° sobre España, más las islas. Son 187 puntos en una
+# sola petición a Open-Meteo, que los sirve sin problema.
+#
+# Se pasó de 41 puntos nombrados por capital a esta rejilla porque con 41 el
+# campo interpolado era tan pobre que la capa animada resultaba invisible: no
+# había estructura que enseñar. Subir la densidad del dibujo sin subir la de los
+# datos habría sido inventar detalle. Con 0,75° hay ~55 km entre nodos, que es
+# lo que el modelo de Open-Meteo resuelve de verdad.
+#
+# Los nombres dejan de ser topónimos y pasan a ser la coordenada: la rejilla no
+# cae sobre ciudades y llamarla "Madrid" sería mentir sobre dónde se midió.
+
+
+def _rejilla() -> tuple[tuple[str, float, float], ...]:
+    puntos: list[tuple[str, float, float]] = []
+
+    # Península y Baleares.
+    lat = 36.0
+    while lat <= 43.9:
+        lon = -9.3
+        while lon <= 4.4:
+            puntos.append((f"{lat:.2f},{lon:.2f}", round(lat, 2), round(lon, 2)))
+            lon += 0.75
+        lat += 0.75
+
+    # Canarias, con su propio recorrido: meterlas en el bucle anterior
+    # arrastraría medio Atlántico.
+    lat = 27.6
+    while lat <= 29.5:
+        lon = -18.2
+        while lon <= -13.4:
+            puntos.append((f"{lat:.2f},{lon:.2f}", round(lat, 2), round(lon, 2)))
+            lon += 0.75
+        lat += 0.75
+
+    return tuple(puntos)
+
+
+GRID_POINTS: tuple[tuple[str, float, float], ...] = _rejilla()
+
 
 WIND_SCHEMA = [
     "name",
