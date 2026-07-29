@@ -922,3 +922,103 @@ body {
   line-height: 1.4;
   color: var(--warn);
 }
+
+/* Leyenda por tipo · agrupada, no una lista plana de colores.
+   Los tres colores de intensidad y el borde de "oficial" son ejes distintos y
+   mezclarlos en una sola columna hacía leer el borde grueso como un cuarto
+   nivel de intensidad. */
+.leyenda__grupo {
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tinta-suave);
+}
+.leyenda__grupo:first-of-type { margin-top: 0.4rem; }
+
+.leyenda__nota {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--tinta-suave);
+}
+
+.leyenda__aviso {
+  margin: 0.4rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--tinta-suave);
+}
+
+/* Muestras con el mismo halo que el mapa: la leyenda debe parecerse a lo que
+   explica, no a un cuadradito de color. */
+.leyenda__muestra--punto {
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent);
+}
+.leyenda__muestra--oficial {
+  border-radius: 50%;
+  background: #f05a28;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1.5px rgb(0 0 0 / 0.45);
+}
+.leyenda__muestra--grupo {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ff9f1c;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  box-shadow: 0 0 0 4px rgb(255 159 28 / 0.22);
+}
+
+/* Mini-evolutivo de la ficha */
+.mini-evolutivo {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 88px;
+  margin: 0.5rem 0 0.4rem;
+}
+.mini-evolutivo__dia {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 3px;
+}
+.mini-evolutivo__cifra {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--tinta-suave);
+}
+.mini-evolutivo__columna {
+  width: 100%;
+  border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(180deg, #ff9f1c, #f05a28);
+}
+/* El día en curso va rayado por lo mismo que en el gráfico general: está
+   incompleto y su caída no significa que el incendio remita. */
+.mini-evolutivo__dia[data-parcial='true'] .mini-evolutivo__columna {
+  background: repeating-linear-gradient(
+    135deg, #ff9f1c, #ff9f1c 4px, #ffd7a8 4px, #ffd7a8 8px
+  );
+}
+.mini-evolutivo__dia-etq {
+  font-size: 0.66rem;
+  color: var(--tinta-suave);
+}
+
+/* Pista de zoom en la ficha */
+.ficha__pista {
+  margin: 0.45rem 0 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: var(--fondo-suave, rgb(0 0 0 / 0.04));
+  font-size: 0.75rem;
+  color: var(--tinta-suave);
+}

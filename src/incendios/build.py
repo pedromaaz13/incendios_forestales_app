@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from datetime import UTC, datetime
 
 import geopandas as gpd
@@ -32,7 +33,7 @@ DISCLAIMER = (
 )
 
 # Campos que viajan al navegador en incidents.geojson.
-INCIDENT_WEB_FIELDS = INCIDENT_SCHEMA
+INCIDENT_WEB_FIELDS = [*INCIDENT_SCHEMA, "radio_est_km"]
 
 
 def _iso(ts) -> str | None:
@@ -182,6 +183,12 @@ def incidents_for_web(incidents: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
     for col in ("igr_level", "resources_air", "resources_ground", "resources_people"):
         out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    # Radio equivalente en km, para poder decir "1,5 km de radio" en vez de
+    # "168 ha", que no le dice nada a nadie. Es la misma estimación expresada de
+    # otra forma, no un dato nuevo, y arrastra la misma imprecisión.
+    area = pd.to_numeric(out["area_est_ha"], errors="coerce")
+    out["radio_est_km"] = ((area * 10_000 / math.pi) ** 0.5 / 1000).round(1)
 
     return gpd.GeoDataFrame(
         out[[*INCIDENT_WEB_FIELDS, "geometry"]], geometry="geometry", crs=incidents.crs

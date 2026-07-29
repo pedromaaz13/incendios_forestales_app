@@ -180,3 +180,43 @@ export function coordenadas(lon: number, lat: number): string {
   const eo = lon >= 0 ? 'E' : 'O';
   return `${Math.abs(lat).toFixed(4)}° ${ns}, ${Math.abs(lon).toFixed(4)}° ${eo}`;
 }
+
+
+const SENSOR_LEGIBLE: Record<string, string> = {
+  VIIRS_SNPP_NRT: 'VIIRS',
+  VIIRS_NOAA20_NRT: 'VIIRS',
+  VIIRS_NOAA21_NRT: 'VIIRS',
+  MODIS_NRT: 'MODIS',
+  SEVIRI_FRP_PIXEL: 'SEVIRI',
+};
+
+/**
+ * Sensores que vieron el incendio, sin repetir.
+ *
+ * Los tres VIIRS (S-NPP, NOAA-20, NOAA-21) son el mismo instrumento en
+ * satélites distintos: enumerarlos por separado ocupa la ficha sin decir nada
+ * nuevo. Lo que sí cambia la lectura es VIIRS frente a MODIS, porque son
+ * 375 m frente a 1 km de resolución.
+ */
+export function sensores(lista: string | null | undefined): string {
+  if (!lista) return '—';
+  const vistos = [
+    ...new Set(
+      lista
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((s) => SENSOR_LEGIBLE[s] ?? s),
+    ),
+  ];
+  return vistos.length ? vistos.join(' · ') : '—';
+}
+
+/** Resolución del mejor sensor que vio el incendio, para matizar la posición. */
+export function resolucionSensor(lista: string | null | undefined): string | null {
+  const v = sensores(lista);
+  if (v.includes('VIIRS')) return '375 m';
+  if (v.includes('SEVIRI')) return '3 km';
+  if (v.includes('MODIS')) return '1 km';
+  return null;
+}

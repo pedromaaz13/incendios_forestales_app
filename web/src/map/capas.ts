@@ -17,6 +17,7 @@ export const FUENTE_AIRE = 'aire';
 export const FUENTE_TRAFICO = 'trafico';
 
 export const CAPA_INCERTIDUMBRE = 'incidentes-incertidumbre';
+export const CAPA_HALO = 'incidentes-halo';
 export const CAPA_INCIDENTES = 'incidentes-simbolo';
 export const CAPA_GRUPOS = 'incidentes-grupo';
 export const CAPA_GRUPOS_NUM = 'incidentes-grupo-numero';
@@ -99,6 +100,27 @@ export function anadirCapasGrupos(mapa: MapaGL): void {
   // El color del globo lo marca el incendio más grave que contiene, no la
   // media: si dentro hay uno extremo, el grupo se pinta como extremo. Promediar
   // escondería el que importa.
+  // Halo del grupo: mismo recurso que en los incendios sueltos, para que la
+  // transición al hacer zoom no cambie el lenguaje visual.
+  mapa.addLayer({
+    id: `${CAPA_GRUPOS}-halo`,
+    type: 'circle',
+    source: FUENTE_INCIDENTES,
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-radius': [
+        'interpolate', ['linear'], ['get', 'point_count'],
+        2, 30, 10, 44, 50, 64, 200, 88,
+      ],
+      'circle-color': [
+        'step', ['get', 'peor'],
+        '#ffd93d', 2, '#ff9f1c', 3, '#ff5714', 4, '#e01e37',
+      ],
+      'circle-opacity': 0.22,
+      'circle-blur': 1,
+    },
+  });
+
   mapa.addLayer({
     id: CAPA_GRUPOS,
     type: 'circle',
@@ -197,6 +219,27 @@ export function anadirCapasIncidentes(mapa: MapaGL): void {
       'circle-stroke-width': 1,
       'circle-stroke-color': COLOR_POR_INTENSIDAD,
       'circle-stroke-opacity': 0.45,
+    },
+  });
+
+  // Halo difuso bajo cada incendio. No aporta dato: aporta jerarquía visual,
+  // que a zoom alto es lo que distingue un incendio de un punto cualquiera del
+  // mapa base. El radio va ligado al del símbolo para que crezcan juntos.
+  mapa.addLayer({
+    id: CAPA_HALO,
+    type: 'circle',
+    source: FUENTE_INCIDENTES,
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-radius': ['*', RADIO_SIMBOLO, 2.6],
+      'circle-color': COLOR_POR_INTENSIDAD,
+      'circle-opacity': [
+        'match', ['get', 'intensity'],
+        'extrema', 0.28,
+        'alta', 0.2,
+        0.12,
+      ],
+      'circle-blur': 1,
     },
   });
 

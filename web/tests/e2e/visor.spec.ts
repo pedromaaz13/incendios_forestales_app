@@ -322,8 +322,22 @@ test('los incidentes se agrupan con su número a zoom bajo', async ({ page }) =>
 });
 
 test('los grupos se dispersan al acercar', async ({ page }) => {
-  await abrir(page, '/?lat=40.45&lon=-4.55&zoom=10');
-  await page.waitForTimeout(1500);
+  // El encuadre sale del propio dato, no de una coordenada escrita a mano.
+  // La versión anterior apuntaba a un punto que tenía incendio en el dataset de
+  // aquel día; al regenerar la demo el sitio se quedó vacío y el test falló sin
+  // que hubiera ninguna regresión. Es la misma trampa que ya nos costó las
+  // fechas congeladas.
+  await abrir(page);
+  const centro = await page.evaluate(() => {
+    const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    const f = m?.querySourceFeatures('incidentes', { filter: ['!', ['has', 'point_count']] })[0];
+    const c = (f?.geometry as GeoJSON.Point | undefined)?.coordinates;
+    return c ? { lon: c[0], lat: c[1] } : null;
+  });
+  expect(centro).not.toBeNull();
+
+  await page.goto(`/?lat=${centro!.lat}&lon=${centro!.lon}&zoom=11`);
+  await page.waitForTimeout(2000);
 
   const cuenta = await page.evaluate(() => {
     const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
@@ -491,4 +505,72 @@ test('un fallo de estilo que MapLibre calla se hace visible', async ({ page }) =
 
   expect(resultado?.seAnadio).toBe(false);
   expect(resultado?.registrados.join(' ')).toContain('glyphs');
+});
+
+// --- Ficha ampliada: fuente, superficie y evolutivo por incendio ------------
+
+/**
+ * Abre la ficha del primer incendio de la lista.
+ *
+ * Se hace por la tarjeta y no por el mapa porque el punto del mapa depende del
+ * encuadre y del agrupamiento, y esta prueba no va de eso.
+ */
+async function abrirPrimeraFicha(page: import('@playwright/test').Page) {
+  await abrir(page);
+  await page.locator('.tarjeta').first().click();
+  await expect(page.locator('#ficha')).toBeVisible();
+}
+
+test('la ficha declara qué sensor vio el incendio', async ({ page }) => {
+  // El sensor cambia cómo hay que leer la posición: VIIRS son 375 m y MODIS
+  // 1 km. Publicarlo sin enseñarlo dejaría el dato muerto en el GeoJSON.
+  await abrirPrimeraFicha(page);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Fuente');
+  // Nunca el identificador crudo del producto de la NASA: eso no lo lee nadie.
+  await expect(ficha).not.toContainText('_NRT');
+});
+
+test('la superficie estimada nunca se presenta como medida', async ({ page }) => {
+  await abrirPrimeraFicha(page);
+
+  const ficha = page.locator('#ficha');
+  const texto = (await ficha.textContent()) ?? '';
+  if (!texto.includes('Superficie estimada')) test.skip();
+
+  // Sobre la ficha entera y no sobre `.ficha__estimacion`: hay varios avisos de
+  // estimación y el localizador en modo estricto no admite varios nodos.
+  await expect(ficha).toContainText('no medida');
+  // El radio equivalente es la misma estimación en otra unidad, y va junto a
+  // ella: separarlo lo convertiría en un dato aparte con aire de medición.
+  await expect(ficha).toContainText('radio');
+});
+
+test('la ficha muestra la evolución de ese incendio, no la global', async ({ page }) => {
+  await abrirPrimeraFicha(page);
+
+  const mini = page.locator('#ficha .mini-evolutivo');
+  const global = page.locator('#evolutivo .evolutivo__barra');
+
+  if ((await mini.count()) === 0) {
+    // Un incendio solo con parte oficial no tiene serie: la caja no se dibuja
+    // en vez de salir vacía, que se leería como fallo de carga.
+    test.skip();
+  }
+
+  const focosFicha = await mini.locator('.mini-evolutivo__cifra').allTextContents();
+  const focosGlobal = await global.locator('.evolutivo__cifra').allTextContents();
+  expect(focosFicha.join()).not.toBe(focosGlobal.join());
+});
+
+test('la leyenda separa intensidad de confirmación', async ({ page }) => {
+  // El borde grueso de "oficial" y los tres colores de intensidad son ejes
+  // distintos. En una sola lista el borde se leía como un cuarto nivel.
+  await abrir(page);
+
+  const leyenda = page.locator('#leyenda');
+  await expect(leyenda.locator('.leyenda__grupo')).toHaveCount(2);
+  await expect(leyenda).toContainText('calor detectado');
+  await expect(leyenda).toContainText('no la gravedad');
 });
