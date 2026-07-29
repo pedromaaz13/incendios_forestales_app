@@ -437,3 +437,58 @@ test('el lienzo de partículas no bloquea el mapa', async ({ page }) => {
 
   expect(pasa).toBe('none');
 });
+
+// --- guarda contra etiquetas mudas -----------------------------------------
+
+test('ninguna capa usa text-field con un estilo sin glyphs', async ({ page }) => {
+  // El fallo que mordió dos veces: MapLibre no dibuja `text-field` sin servidor
+  // de fuentes y **no protesta**. La capa se añade, el estilo valida y la
+  // etiqueta no aparece. Las dos veces se descubrió mirando una captura.
+  await abrir(page);
+  await page.waitForTimeout(1500);
+
+  const mudas = await page.evaluate(() => {
+    const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    const estilo = m?.getStyle();
+    if (!estilo || estilo.glyphs) return [];
+    return (estilo.layers ?? [])
+      .filter((c) => 'layout' in c && (c.layout as Record<string, unknown>)?.['text-field'])
+      .map((c) => c.id);
+  });
+
+  expect(mudas).toEqual([]);
+});
+
+test('un fallo de estilo que MapLibre calla se hace visible', async ({ page }) => {
+  // Sin esta prueba, el escucha podría estar roto y el test de arriba seguiría
+  // en verde por el motivo equivocado: porque no hay capas malas, no porque
+  // sepa detectarlas.
+  //
+  // El caso: MapLibre **no añade** una capa con `text-field` si el estilo no
+  // declara `glyphs`. No lanza excepción, no escribe en consola y la capa
+  // simplemente no existe. Solo lo dice por el evento `error`.
+  await abrir(page);
+  await page.waitForTimeout(1500);
+
+  const resultado = await page.evaluate(() => {
+    const w = window as never as { __mapa?: maplibregl.Map; __erroresMapa?: string[] };
+    const m = w.__mapa;
+    if (!m) return null;
+
+    m.addLayer({
+      id: 'prueba-muda',
+      type: 'symbol',
+      source: 'incidentes',
+      layout: { 'text-field': 'esto no se vería' },
+    });
+
+    return {
+      // MapLibre la rechaza: no llega ni a estar en el estilo.
+      seAnadio: !!m.getLayer('prueba-muda'),
+      registrados: w.__erroresMapa ?? [],
+    };
+  });
+
+  expect(resultado?.seAnadio).toBe(false);
+  expect(resultado?.registrados.join(' ')).toContain('glyphs');
+});

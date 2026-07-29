@@ -473,3 +473,40 @@ export function anadirCapasTrafico(mapa: MapaGL): void {
     },
   });
 }
+
+
+/**
+ * Hace ruidosos los fallos que MapLibre reporta en voz baja.
+ *
+ * El caso que motivó esto nos mordió dos veces —flechas de viento y cifras de
+ * los grupos— y las dos se descubrieron mirando una captura. El diagnóstico
+ * inicial era erróneo: no es que la capa se pinte muda, es que **MapLibre no la
+ * añade**, y lo comunica por el evento `error` sin lanzar excepción ni escribir
+ * en consola:
+ *
+ *   layers.X.layout.text-field: use of "text-field" requires a style
+ *   "glyphs" property
+ *
+ * Por eso escanear el estilo no servía: la capa rechazada nunca llega a estar
+ * en él. Escuchar el evento sí, y de paso cubre cualquier otro fallo de estilo
+ * o de fuente que MapLibre calle: peticiones de teselas fallidas, capas mal
+ * formadas, expresiones inválidas.
+ *
+ * No se corta la aplicación en producción: un error de estilo no debe dejar sin
+ * mapa a quien está mirando si arde algo cerca de su casa. Se registra, y en
+ * desarrollo se lanza para que salte durante las pruebas.
+ */
+export function hacerRuidososLosErrores(mapa: MapaGL): void {
+  mapa.on('error', (ev) => {
+    const mensaje = ev.error?.message ?? String(ev);
+
+    // Las teselas del mapa base fallan de forma esperable —sin red, tras un
+    // adblocker, en las capturas de regresión— y el visor ya lo tolera. Avisar
+    // de cada una ahogaría los errores que sí importan.
+    if (/tile|Failed to fetch|NetworkError|AbortError/i.test(mensaje)) return;
+
+    console.error(`[mapa] ${mensaje}`);
+    (window as unknown as { __erroresMapa?: string[] }).__erroresMapa ??= [];
+    (window as unknown as { __erroresMapa: string[] }).__erroresMapa.push(mensaje);
+  });
+}

@@ -32,6 +32,7 @@ import {
   FUENTE_VIENTO,
   anadirCapaAire,
   anadirCapasGrupos,
+  hacerRuidososLosErrores,
   registrarCifrasDeGrupo,
   anadirCapasTrafico,
   anadirCapaHotspots,
@@ -156,6 +157,7 @@ async function arrancar(): Promise<void> {
     fadeDuration: prefiereMenosMovimiento() ? 0 : 300,
   });
   estado.mapa = mapa;
+  hacerRuidososLosErrores(mapa);
   // Enganche para las pruebas de extremo a extremo: permite consultar qué
   // capas están montadas y qué features hay pintadas sin depender del DOM.
   (window as unknown as { __mapa?: MapaGL }).__mapa = mapa;
