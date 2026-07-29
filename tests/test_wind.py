@@ -179,14 +179,35 @@ def test_fetch_requests_the_documented_parameters():
 
 
 def test_grid_covers_the_required_number_of_points():
-    """RF-P-09 pide 35 puntos distribuidos; se usan algo más para cubrir islas."""
-    assert len(wind.GRID_POINTS) >= 35
+    """RF-P-09 pide 35 puntos; se usan muchos más.
+
+    Con 41 puntos el campo interpolado era tan pobre que la capa animada
+    resultaba invisible, y subir la densidad del dibujo sin subir la de los
+    datos habría sido inventar detalle que no existe.
+    """
+    assert len(wind.GRID_POINTS) >= 150
 
 
 def test_grid_includes_islands():
-    nombres = {p[0] for p in wind.GRID_POINTS}
+    """Se comprueba cobertura, no topónimos: la rejilla es regular y no cae
+    sobre ciudades, así que llamar "Madrid" a un nodo sería mentir sobre dónde
+    se midió."""
+    canarias = [p for p in wind.GRID_POINTS if p[1] < 30 and p[2] < -13]
+    baleares = [p for p in wind.GRID_POINTS if 38.5 < p[1] < 40.2 and 1.0 < p[2] < 4.4]
 
-    assert {"Palma", "Las Palmas", "Tenerife"} <= nombres
+    assert len(canarias) >= 4, "sin nodos sobre Canarias"
+    assert len(baleares) >= 2, "sin nodos sobre Baleares"
+
+
+def test_grid_is_dense_enough_to_interpolate():
+    """La separación entre nodos debe estar en el orden de lo que el modelo
+    resuelve. Más fino sería precisión fingida; más grueso, un campo plano."""
+    peninsulares = sorted({p[1] for p in wind.GRID_POINTS if p[1] > 35})
+    saltos = [
+        peninsulares[i + 1] - peninsulares[i] for i in range(len(peninsulares) - 1)
+    ]
+
+    assert 0.5 <= min(saltos) <= 1.0
 
 
 def test_grid_points_are_inside_spain():

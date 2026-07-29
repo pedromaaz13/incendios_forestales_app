@@ -46,10 +46,16 @@ const VIDA_MIN = 40;
 const VIDA_MAX = 110;
 
 /** Partículas por cada millón de píxeles de lienzo, para que la densidad no
- *  dependa del tamaño de la ventana. */
-const DENSIDAD = 260;
+ *  dependa del tamaño de la ventana.
+ *
+ *  Subida desde 260. Con el valor anterior la capa estaba técnicamente
+ *  animando —el lienzo cambiaba entre fotogramas— pero era invisible a simple
+ *  vista, y una capa que no se ve es una capa que no existe. Más partículas no
+ *  añaden detalle al campo: siguen siendo los mismos 41 puntos interpolados,
+ *  solo que ahora se leen. */
+const DENSIDAD = 750;
 
-const MAX_PARTICULAS = 900;
+const MAX_PARTICULAS = 2600;
 
 /** Exponente de la ponderación IDW. 2 es el valor habitual: más alto hace el
  *  campo escalonado, más bajo lo aplana hasta perder los contrastes. */
@@ -57,13 +63,22 @@ const IDW_POTENCIA = 2;
 
 /** Escala de km/h a grados por paso de animación. Ajustada para que el
  *  movimiento se lea sin que las partículas crucen la pantalla de golpe. */
-const ESCALA = 0.00022;
+const ESCALA = 0.00042;
 
+/**
+ * Color de la estela por velocidad.
+ *
+ * Tonos saturados y oscuros, no claros. El primer intento usaba cian y amarillo
+ * —bonitos sobre fondo oscuro— y resultaban invisibles: el mapa base por
+ * defecto es claro y el amarillo sobre beige no se distingue. Cada estela se
+ * dibuja además sobre un trazo blanco más ancho, de modo que se lee igual en
+ * el mapa normal, en el de satélite y en el de relieve.
+ */
 function colorPorVelocidad(kmh: number): string {
-  if (kmh < 15) return 'rgba(46, 230, 168, 0.55)';
-  if (kmh < 30) return 'rgba(255, 217, 61, 0.6)';
-  if (kmh < 50) return 'rgba(255, 159, 28, 0.65)';
-  return 'rgba(224, 30, 55, 0.75)';
+  if (kmh < 15) return 'rgba(0, 122, 165, 0.9)';
+  if (kmh < 30) return 'rgba(0, 150, 110, 0.92)';
+  if (kmh < 50) return 'rgba(214, 105, 0, 0.95)';
+  return 'rgba(190, 15, 45, 0.97)';
 }
 
 export class CapaVientoAnimado implements CustomLayerInterface {
@@ -204,13 +219,20 @@ export class CapaVientoAnimado implements CustomLayerInterface {
 
     // Estela: en vez de borrar, se oscurece lo pintado. Es lo que da la
     // sensación de flujo continuo en lugar de puntos parpadeando.
+    // Un borrado más lento deja estelas largas: es lo que convierte puntos que
+    // se mueven en líneas de flujo legibles.
     this.ctx.globalCompositeOperation = 'destination-out';
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.035)';
     this.ctx.fillRect(0, 0, this.lienzo.width, this.lienzo.height);
     this.ctx.globalCompositeOperation = 'source-over';
 
     const ratio = window.devicePixelRatio || 1;
-    this.ctx.lineWidth = 1.4 * ratio;
+    this.ctx.lineCap = 'round';
+
+    // Dos pasadas: primero todas las estelas en blanco y algo más anchas, luego
+    // el color encima. Ese contorno es lo que las hace legibles sobre el mapa
+    // claro, sobre la ortofoto y sobre el relieve sin cambiar de paleta.
+    const trazos: Array<{ ax: number; ay: number; bx: number; by: number; color: string }> = [];
 
     for (const p of this.particulas) {
       const v = this.muestrear(p.lon, p.lat);
@@ -222,11 +244,11 @@ export class CapaVientoAnimado implements CustomLayerInterface {
       const a = this.mapa.project([p.lon, p.lat]);
       const b = this.mapa.project([lon2, lat2]);
 
-      this.ctx.strokeStyle = colorPorVelocidad(v.velocidad);
-      this.ctx.beginPath();
-      this.ctx.moveTo(a.x * ratio, a.y * ratio);
-      this.ctx.lineTo(b.x * ratio, b.y * ratio);
-      this.ctx.stroke();
+      trazos.push({
+        ax: a.x * ratio, ay: a.y * ratio,
+        bx: b.x * ratio, by: b.y * ratio,
+        color: colorPorVelocidad(v.velocidad),
+      });
 
       p.lon = lon2;
       p.lat = lat2;
@@ -241,6 +263,35 @@ export class CapaVientoAnimado implements CustomLayerInterface {
       // Reaparecer al envejecer, y no solo al salir del encuadre, evita que
       // todas las partículas acaben apelotonadas donde el campo converge.
       if (p.edad > p.vida || fuera) Object.assign(p, this.nueva());
+    }
+
+    // Contorno claro debajo de todas las estelas.
+    this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    this.ctx.lineWidth = 3.6 * ratio;
+    this.ctx.beginPath();
+    for (const t of trazos) {
+      this.ctx.moveTo(t.ax, t.ay);
+      this.ctx.lineTo(t.bx, t.by);
+    }
+    this.ctx.stroke();
+
+    // Y el color encima. Se agrupa por color para no cambiar de estilo en cada
+    // trazo: con 2.600 partículas eso es la diferencia entre 60 fps y arrastrar.
+    this.ctx.lineWidth = 1.9 * ratio;
+    const porColor = new Map<string, typeof trazos>();
+    for (const t of trazos) {
+      const lote = porColor.get(t.color);
+      if (lote) lote.push(t);
+      else porColor.set(t.color, [t]);
+    }
+    for (const [color, lote] of porColor) {
+      this.ctx.strokeStyle = color;
+      this.ctx.beginPath();
+      for (const t of lote) {
+        this.ctx.moveTo(t.ax, t.ay);
+        this.ctx.lineTo(t.bx, t.by);
+      }
+      this.ctx.stroke();
     }
   }
 
