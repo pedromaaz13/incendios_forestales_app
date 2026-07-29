@@ -87,7 +87,18 @@ export function pintarFuentes(salud: Salud | null): void {
     return;
   }
 
-  lista.innerHTML = salud.sources.map(filaFuente).join('');
+  // Se reordena aquí aunque el pipeline ya lo haga. Confiar en el orden del
+  // fichero significa que cualquier cosa que lo reordene —una caché, un
+  // proxy, un cambio en `health.py`— hunde las fuentes caídas al final del
+  // panel sin que nadie se entere. La garantía de RF-F-06 tiene que ser local.
+  const PRIORIDAD: Record<string, number> = { error: 0, stale: 1, disabled: 2, ok: 3 };
+  const ordenadas = [...salud.sources].sort(
+    (a, b) =>
+      (PRIORIDAD[a.status] ?? 9) - (PRIORIDAD[b.status] ?? 9) ||
+      a.name.localeCompare(b.name, 'es'),
+  );
+
+  lista.innerHTML = ordenadas.map(filaFuente).join('');
 }
 
 function filaFuente(f: Fuente): string {

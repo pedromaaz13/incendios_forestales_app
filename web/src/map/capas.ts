@@ -18,6 +18,8 @@ export const FUENTE_TRAFICO = 'trafico';
 
 export const CAPA_INCERTIDUMBRE = 'incidentes-incertidumbre';
 export const CAPA_INCIDENTES = 'incidentes-simbolo';
+export const CAPA_GRUPOS = 'incidentes-grupo';
+export const CAPA_GRUPOS_NUM = 'incidentes-grupo-numero';
 export const CAPA_RESALTE = 'incidentes-resalte';
 export const CAPA_HOTSPOTS = 'hotspots-punto';
 export const CAPA_PERIMETRO_ESTIMADO = 'perimetros-estimado';
@@ -81,12 +83,113 @@ const OPACIDAD_POR_ESTADO: ExpressionSpecification = [
   0.62,
 ];
 
+/**
+ * Agrupación numérica de incidentes · matiz sobre RF-F-04.
+ *
+ * La especificación prohíbe el badge numérico **de hotspots**, y con razón: un
+ * "638" mezcla incendios reales, quemas agrícolas y falsos positivos en un
+ * número que parece una magnitud y no lo es.
+ *
+ * Aquí se agrupan **incidentes**, que es otra cosa. Han pasado por el filtro de
+ * confianza, la máscara industrial, la deduplicación, el clustering y los ocho
+ * invariantes. Un globo que dice "3" significa tres incendios, y eso sí es una
+ * afirmación que el dato sostiene. Los hotspots siguen sin agruparse nunca.
+ */
+export function anadirCapasGrupos(mapa: MapaGL): void {
+  // El color del globo lo marca el incendio más grave que contiene, no la
+  // media: si dentro hay uno extremo, el grupo se pinta como extremo. Promediar
+  // escondería el que importa.
+  mapa.addLayer({
+    id: CAPA_GRUPOS,
+    type: 'circle',
+    source: FUENTE_INCIDENTES,
+    filter: ['has', 'point_count'],
+    paint: {
+      'circle-radius': [
+        'interpolate', ['linear'], ['get', 'point_count'],
+        2, 15,
+        10, 22,
+        50, 32,
+        200, 44,
+      ],
+      'circle-color': [
+        'step', ['get', 'peor'],
+        '#ffd93d', 2,
+        '#ff9f1c', 3,
+        '#ff5714', 4,
+        '#e01e37',
+      ],
+      'circle-opacity': 0.9,
+      'circle-stroke-width': 3,
+      'circle-stroke-color': '#0d1117',
+      'circle-stroke-opacity': 0.75,
+    },
+  });
+
+  // El número va como icono generado y no como `text-field`. Los estilos raster
+  // de `estilos.ts` no declaran `glyphs`, así que MapLibre no tiene con qué
+  // dibujar texto y la etiqueta no aparecería — el mismo fallo que tuvo la capa
+  // de viento. Apuntar a un servidor de fuentes externo tampoco vale: el de
+  // demotiles devuelve 404 y sería otra dependencia que se cae en silencio.
+  mapa.addLayer({
+    id: CAPA_GRUPOS_NUM,
+    type: 'symbol',
+    source: FUENTE_INCIDENTES,
+    filter: ['has', 'point_count'],
+    layout: {
+      'icon-image': ['concat', 'grupo-', ['get', 'point_count_abbreviated']],
+      'icon-allow-overlap': true,
+      'icon-ignore-placement': true,
+    },
+  });
+}
+
+/**
+ * Genera las cifras de los globos a medida que hacen falta.
+ *
+ * `styleimagemissing` avisa cuando el estilo pide una imagen que no existe, que
+ * es justo lo que pasa la primera vez que aparece un grupo de N incendios. Se
+ * dibuja la cifra en un lienzo y se registra con ese nombre.
+ */
+export function registrarCifrasDeGrupo(mapa: MapaGL): void {
+  mapa.on('styleimagemissing', (ev) => {
+    const nombre = ev.id;
+    if (!nombre.startsWith('grupo-') || mapa.hasImage(nombre)) return;
+
+    const texto = nombre.slice('grupo-'.length);
+    const escala = 2; // para que se vea nítido en pantallas de alta densidad
+    const lado = 64 * escala;
+
+    const lienzo = document.createElement('canvas');
+    lienzo.width = lado;
+    lienzo.height = lado;
+    const ctx = lienzo.getContext('2d');
+    if (!ctx) return;
+
+    // Cifra oscura con halo claro: es el par de más contraste sobre el globo
+    // cálido y se lee igual en el mapa normal, el de satélite y el de relieve.
+    const tam = (texto.length > 3 ? 20 : texto.length > 2 ? 24 : 28) * escala;
+    ctx.font = `700 ${tam}px Archivo, "Helvetica Neue", system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.lineWidth = 3 * escala;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.strokeText(texto, lado / 2, lado / 2);
+    ctx.fillStyle = '#3d1200';
+    ctx.fillText(texto, lado / 2, lado / 2);
+
+    mapa.addImage(nombre, ctx.getImageData(0, 0, lado, lado), { pixelRatio: escala });
+  });
+}
+
 export function anadirCapasIncidentes(mapa: MapaGL): void {
   // El anillo va debajo del símbolo para que no lo tape.
   mapa.addLayer({
     id: CAPA_INCERTIDUMBRE,
     type: 'circle',
     source: FUENTE_INCIDENTES,
+    filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-radius': RADIO_INCERTIDUMBRE,
       'circle-color': COLOR_POR_INTENSIDAD,
@@ -101,7 +204,7 @@ export function anadirCapasIncidentes(mapa: MapaGL): void {
     id: CAPA_RESALTE,
     type: 'circle',
     source: FUENTE_INCIDENTES,
-    filter: ['==', ['get', 'id'], ''],
+    filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'id'], '']],
     paint: {
       'circle-radius': ['+', RADIO_SIMBOLO, 7],
       'circle-color': 'transparent',
@@ -115,6 +218,7 @@ export function anadirCapasIncidentes(mapa: MapaGL): void {
     id: CAPA_INCIDENTES,
     type: 'circle',
     source: FUENTE_INCIDENTES,
+    filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-radius': RADIO_SIMBOLO,
       'circle-color': COLOR_POR_INTENSIDAD,

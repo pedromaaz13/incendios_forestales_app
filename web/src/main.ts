@@ -15,6 +15,7 @@ import './estilos.css';
 import { cargarGeoJson, cargarIncidentes, cargarManifiesto, cargarSalud } from './datos';
 import {
   CAPA_AIRE,
+  CAPA_GRUPOS,
   CAPA_TRAFICO,
   CAPA_TRAFICO_INCENDIO,
   CAPA_HOTSPOTS,
@@ -30,6 +31,8 @@ import {
   FUENTE_TRAFICO,
   FUENTE_VIENTO,
   anadirCapaAire,
+  anadirCapasGrupos,
+  registrarCifrasDeGrupo,
   anadirCapasTrafico,
   anadirCapaHotspots,
   anadirCapaViento,
@@ -37,6 +40,8 @@ import {
   anadirCapasPerimetros,
 } from './map/capas';
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
+import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
+import { agruparPorDia, pintarEvolutivo, type DiaEvolutivo } from './ui/evolutivo';
 import { abrirFicha, cerrarFicha } from './ui/ficha';
 import {
   FILTROS_INICIALES,
@@ -71,6 +76,8 @@ interface Estado {
   seleccionado: string | null;
   capas: Record<string, boolean>;
   filtros: EstadoFiltros;
+  dias: DiaEvolutivo[];
+  diaElegido: string | null;
 }
 
 const estado: Estado = {
@@ -81,6 +88,8 @@ const estado: Estado = {
   seleccionado: null,
   capas: { hotspots: true, perimetros: false, viento: false, aire: false, trafico: false },
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
+  dias: [],
+  diaElegido: null,
 };
 
 /**
@@ -147,6 +156,9 @@ async function arrancar(): Promise<void> {
     fadeDuration: prefiereMenosMovimiento() ? 0 : 300,
   });
   estado.mapa = mapa;
+  // Enganche para las pruebas de extremo a extremo: permite consultar qué
+  // capas están montadas y qué features hay pintadas sin depender del DOM.
+  (window as unknown as { __mapa?: MapaGL }).__mapa = mapa;
 
   mapa.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
   mapa.addControl(new maplibregl.FullscreenControl(), 'top-right');
@@ -169,7 +181,7 @@ async function arrancar(): Promise<void> {
     void datosListos.then(() => {
       montarCapas(mapa);
       conectarInteraccion(mapa);
-      aplicarFiltros(mapa, estado.filtros);
+      aplicarFiltros(mapa, estado.filtros, estado.diaElegido);
       refrescarLista();
       abrirDesdeUrl();
     });
@@ -184,7 +196,7 @@ async function arrancar(): Promise<void> {
   construirConmutadores(mapa);
   construirFiltros(document.getElementById('filtros')!, estado.filtros, {
     alCambiar: (f) => {
-      aplicarFiltros(mapa, f);
+      aplicarFiltros(mapa, f, estado.diaElegido);
       // La lista se repinta con el mismo predicado. Que el mapa y la lista
       // discrepen sería peor que no tener filtros: alguien vería una tarjeta
       // de un incendio que no está en el mapa y no sabría a cuál creer.
@@ -286,7 +298,20 @@ function montarCapas(mapa: MapaGL): void {
     mapa.addSource(FUENTE_INCIDENTES, {
       type: 'geojson',
       data: estado.incidentes as GeoJSON.FeatureCollection,
+      cluster: true,
+      // A partir de zoom 9 no se agrupa: es el mismo umbral en el que aparecen
+      // los hotspots, así que al llegar ahí se ve el detalle completo de una
+      // zona en lugar de una mezcla de globos y puntos.
+      clusterMaxZoom: 9,
+      clusterRadius: 45,
+      clusterProperties: {
+        // El grupo hereda la gravedad de su peor incendio, no la media.
+        peor: ['max', ['match', ['get', 'intensity'],
+          'baja', 1, 'media', 2, 'alta', 3, 'extrema', 4, 1]],
+      },
     });
+    registrarCifrasDeGrupo(mapa);
+    anadirCapasGrupos(mapa);
     anadirCapasIncidentes(mapa);
   }
 
@@ -303,7 +328,10 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
   const ya = {
     hotspots: () => mapa.getSource(FUENTE_HOTSPOTS),
     perimetros: () => mapa.getSource(FUENTE_PERIMETROS),
-    viento: () => mapa.getSource(FUENTE_VIENTO),
+    // Se comprueba la capa y no la fuente: al apagar el viento se retira la
+    // capa de partículas pero la fuente permanece, y mirar la fuente haría
+    // creer que ya está montado.
+    viento: () => mapa.getLayer(CAPA_VIENTO_ANIMADO),
     aire: () => mapa.getSource(FUENTE_AIRE),
     trafico: () => mapa.getSource(FUENTE_TRAFICO),
   }[capa];
@@ -314,6 +342,13 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     if (!datos || !mapa.getStyle()) return;
     mapa.addSource(FUENTE_HOTSPOTS, { type: 'geojson', data: datos });
     anadirCapaHotspots(mapa);
+
+    // El evolutivo sale de las fechas de los propios focos: la ventana de 3
+    // días ya viene descargada y no hace falta pedir nada más.
+    estado.dias = agruparPorDia(
+      datos.features.map((f) => f.properties as { acq_dt: string }),
+    );
+    refrescarEvolutivo(mapa);
   }
 
   if (capa === 'perimetros') {
@@ -326,8 +361,16 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
   if (capa === 'viento') {
     const datos = await cargarGeoJson('wind.geojson');
     if (!datos) return;
-    mapa.addSource(FUENTE_VIENTO, { type: 'geojson', data: datos });
-    anadirCapaViento(mapa);
+    if (!mapa.getSource(FUENTE_VIENTO)) {
+      mapa.addSource(FUENTE_VIENTO, { type: 'geojson', data: datos });
+      anadirCapaViento(mapa);
+    }
+    // Las partículas van encima de las flechas: las flechas dan el valor
+    // puntual y medible, las partículas el sentido del flujo. Con
+    // `prefers-reduced-motion` la capa se añade sin animar.
+    if (!mapa.getLayer(CAPA_VIENTO_ANIMADO)) {
+      mapa.addLayer(new CapaVientoAnimado(datos, !prefiereMenosMovimiento()));
+    }
   }
 
   if (capa === 'aire') {
@@ -351,18 +394,25 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
   const ids: Record<string, string[]> = {
     hotspots: [CAPA_HOTSPOTS],
     perimetros: [CAPA_PERIMETRO_EFFIS, CAPA_PERIMETRO_ESTIMADO],
-    viento: [CAPA_VIENTO],
+    viento: [CAPA_VIENTO, CAPA_VIENTO_ANIMADO],
     aire: [CAPA_AIRE],
     trafico: [CAPA_TRAFICO, CAPA_TRAFICO_INCENDIO],
   };
 
   const aplicar = () => {
     for (const id of ids[capa] ?? []) {
-      if (mapa.getLayer(id)) mapa.setLayoutProperty(id, 'visibility', visibilidad);
+      if (!mapa.getLayer(id)) continue;
+      // La capa de partículas es `custom` y pinta en su propio lienzo, así que
+      // `visibility` no la afecta: hay que retirarla del mapa.
+      if (id === CAPA_VIENTO_ANIMADO) {
+        if (!activa) mapa.removeLayer(id);
+        continue;
+      }
+      mapa.setLayoutProperty(id, 'visibility', visibilidad);
     }
     // Una capa recién montada nace sin filtro: hay que aplicárselo o
     // aparecerían hotspots de 3 días con el período puesto en 1.
-    aplicarFiltros(mapa, estado.filtros);
+    aplicarFiltros(mapa, estado.filtros, estado.diaElegido);
     pintarLeyenda();
   };
 
@@ -376,21 +426,41 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
 // --- interacción ------------------------------------------------------------
 
 function conectarInteraccion(mapa: MapaGL): void {
+  // Pulsar un grupo acerca hasta el zoom en el que ese grupo se abre, en vez
+  // de un salto fijo: así el gesto siempre revela lo que hay dentro.
+  mapa.on('click', CAPA_GRUPOS, (ev) => {
+    const grupo = ev.features?.[0];
+    const id = grupo?.properties?.cluster_id;
+    if (id === undefined) return;
+
+    const fuente = mapa.getSource(FUENTE_INCIDENTES) as maplibregl.GeoJSONSource;
+    void fuente.getClusterExpansionZoom(id).then((zoom) => {
+      mapa.easeTo({
+        center: (grupo!.geometry as GeoJSON.Point).coordinates as [number, number],
+        zoom: zoom + 0.2,
+        duration: prefiereMenosMovimiento() ? 0 : 600,
+      });
+    });
+  });
+
+  for (const capa of [CAPA_GRUPOS, CAPA_INCIDENTES]) {
+    mapa.on('mouseenter', capa, () => {
+      mapa.getCanvas().style.cursor = 'pointer';
+    });
+    mapa.on('mouseleave', capa, () => {
+      mapa.getCanvas().style.cursor = '';
+    });
+  }
+
   mapa.on('click', CAPA_INCIDENTES, (ev) => {
     const rasgo = ev.features?.[0];
     if (rasgo) seleccionar(rasgo.properties as PropiedadesIncidente);
   });
 
-  mapa.on('mouseenter', CAPA_INCIDENTES, () => {
-    mapa.getCanvas().style.cursor = 'pointer';
-  });
-  mapa.on('mouseleave', CAPA_INCIDENTES, () => {
-    mapa.getCanvas().style.cursor = '';
-  });
-
   // Pulsar fuera de cualquier incidente cierra la ficha.
   mapa.on('click', (ev) => {
-    const encima = mapa.queryRenderedFeatures(ev.point, { layers: [CAPA_INCIDENTES] });
+    const capas = [CAPA_INCIDENTES, CAPA_GRUPOS].filter((c) => mapa.getLayer(c));
+    const encima = mapa.queryRenderedFeatures(ev.point, { layers: capas });
     if (encima.length === 0) deseleccionar();
   });
 }
@@ -412,7 +482,11 @@ function deseleccionar(): void {
 function resaltar(id: string | null): void {
   const mapa = estado.mapa;
   if (!mapa?.getLayer(CAPA_RESALTE)) return;
-  mapa.setFilter(CAPA_RESALTE, ['==', ['get', 'id'], id ?? '']);
+  mapa.setFilter(CAPA_RESALTE, [
+    'all',
+    ['!', ['has', 'point_count']],
+    ['==', ['get', 'id'], id ?? ''],
+  ]);
 }
 
 function refrescarLista(): void {
@@ -559,7 +633,7 @@ function construirSelectorEstilo(mapa: MapaGL): void {
         for (const [capa, activa] of Object.entries(estado.capas)) {
           if (activa) alternarCapa(mapa, capa, true);
         }
-        aplicarFiltros(mapa, estado.filtros);
+        aplicarFiltros(mapa, estado.filtros, estado.diaElegido);
         resaltar(estado.seleccionado);
       });
       for (const otro of nodo.querySelectorAll('button')) {
@@ -595,6 +669,27 @@ function construirConmutadores(mapa: MapaGL): void {
       alternarCapa(mapa, capa, activa);
     });
   }
+}
+
+/**
+ * Repinta el evolutivo y aplica el día elegido a las capas.
+ *
+ * Elegir un día filtra los focos a ese día, no los incidentes: un incendio
+ * puede arder varios días y ocultarlo porque su última detección no cae en el
+ * día elegido daría a entender que no existía, que es falso.
+ */
+function refrescarEvolutivo(mapa: MapaGL): void {
+  const nodo = document.getElementById('evolutivo');
+  if (!nodo) return;
+
+  pintarEvolutivo(nodo, estado.dias, estado.diaElegido, {
+    alElegirDia: (dia) => {
+      estado.diaElegido = dia;
+      aplicarFiltros(mapa, estado.filtros, dia);
+      refrescarEvolutivo(mapa);
+      refrescarLista();
+    },
+  });
 }
 
 function pintarLeyenda(): void {
