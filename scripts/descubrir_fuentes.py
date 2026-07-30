@@ -304,12 +304,22 @@ def comprobar_firms() -> None:
         print(f"  ✕ Sin conexión con FIRMS: {exc}")
         return
 
-    # Las cabeceras de respuesta, porque ahí es donde FIRMS declara la cuota y
-    # asumir el nombre de una cabecera es cómo se publica un campo siempre nulo.
-    print("  Cabeceras de la respuesta:")
-    for k, v in sorted(r.headers.items()):
-        if k.lower().startswith(("x-", "remaining", "ratelimit", "rate-", "quota")):
-            print(f"      {k}: {v}")
+    # Estado de la cuota. FIRMS **no** manda ninguna cabecera con las peticiones
+    # restantes —comprobado el 30-07-2026: solo x-frame-options y
+    # x-content-type-options— así que hay que preguntarlo a su endpoint de
+    # estado. Asumir el nombre de una cabecera fue cómo se publicó un campo que
+    # siempre salía nulo.
+    print("\n  Estado de la cuota:")
+    try:
+        with cliente() as c:
+            q = c.get(
+                "https://firms.modaps.eosdis.nasa.gov/mapserver/mapkey_status/",
+                params={"MAP_KEY": clave},
+            )
+        print(f"      HTTP {q.status_code} · {q.headers.get('content-type', '?')}")
+        print(f"      {q.text[:500]}")
+    except Exception as exc:
+        print(f"      ✕ no responde: {exc}")
 
     texto = r.text.strip()
     primera = texto.splitlines()[0] if texto else ""
