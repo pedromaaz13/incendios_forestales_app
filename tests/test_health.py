@@ -226,7 +226,7 @@ def test_unconfigured_registry_sources_are_disabled_not_broken():
 
     estados = health.from_official_sources(REGISTRY, results={}, now=NOW)
 
-    assert {s.id for s in estados} == {"jcyl", "infocam", "112cv"}
+    assert {s.id for s in estados} == {"jcyl", "infocam", "112cv", "bombers", "infoca"}
     assert all(s.status(NOW) == STATUS_DISABLED for s in estados)
     assert all(s.records == 0 for s in estados)
 

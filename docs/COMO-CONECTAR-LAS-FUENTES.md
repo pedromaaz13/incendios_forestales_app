@@ -178,7 +178,10 @@ Es el parámetro que gobierna toda la fusión. Procedimiento:
 3. Mide la distancia entre la coordenada publicada y la posición real.
 4. Repite con 5 incendios. Usa el percentil 90, no la media.
 
-Valores esperables como punto de partida:
+Valores esperables como punto de partida. **Son los que hay puestos hoy en
+`adapters.py`, y ninguno está medido**: se copiaron de esta tabla a falta de
+datos con los que medir. En cuanto una fuente devuelva incendios reales, el
+primer trabajo es sustituir su valor por uno medido.
 
 | Fuente | Precisión típica | Motivo |
 |---|---|---|

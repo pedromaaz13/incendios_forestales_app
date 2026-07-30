@@ -352,7 +352,9 @@ def test_registry_sources_are_disabled_until_configured():
     from incendios.sources.adapters import REGISTRY
 
     sin_configurar = [s.meta.source_id for s in REGISTRY if not s.meta.url]
-    assert sorted(sin_configurar) == ["112cv", "infocam", "jcyl"]
+    assert sorted(sin_configurar) == [
+        "112cv", "bombers", "infoca", "infocam", "jcyl",
+    ]
 
 
 def test_collect_all_skips_unconfigured_sources():
@@ -362,3 +364,34 @@ def test_collect_all_skips_unconfigured_sources():
 
     assert df.empty
     assert list(df.columns) == OFFICIAL_SCHEMA
+
+
+def test_el_registro_cubre_las_cinco_fuentes_de_rf_p_03():
+    """Las cinco de RF-P-03 tienen adaptador, aunque ninguna tenga URL todavía.
+
+    Regresión de un desajuste entre código y documentación: la guía de conexión
+    listaba cinco comunidades y el registro solo tenía tres. Si alguien
+    conseguía la URL de INFOCA no había dónde meterla, y el recuento de "cinco
+    endpoints pendientes" que se repetía en los informes era falso.
+    """
+    from incendios.sources.adapters import REGISTRY
+
+    assert sorted(s.meta.source_id for s in REGISTRY) == [
+        "112cv", "bombers", "infoca", "infocam", "jcyl",
+    ]
+
+
+def test_cada_fuente_declara_precision_atribucion_y_ttl():
+    """Los tres campos que gobiernan el comportamiento aguas abajo.
+
+    `precision_m` fija la tolerancia de la fusión y el radio del anillo de
+    incertidumbre; `attribution` es lo mínimo para que no nos corten el acceso;
+    `ttl_seconds` evita machacar un servicio público.
+    """
+    from incendios.sources.adapters import REGISTRY
+
+    for fuente in REGISTRY:
+        meta = fuente.meta
+        assert meta.precision_m > 0, f"{meta.source_id} sin precisión declarada"
+        assert meta.attribution, f"{meta.source_id} sin atribución"
+        assert meta.ttl_seconds >= 300, f"{meta.source_id} pide con demasiada frecuencia"
