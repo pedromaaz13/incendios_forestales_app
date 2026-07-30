@@ -220,6 +220,17 @@ def describir(datos: Any) -> dict[str, Any]:
         print("    probar en un día con incendios activos antes de darlo por bueno.")
         return {"forma": forma, "registros": 0}
 
+    # Un catálogo OGC API o similar: lo útil es la lista entera de qué publica,
+    # no el primer elemento con todos sus campos. Con 11 colecciones y un solo
+    # registro impreso no había forma de saber si alguna servía.
+    if len(registros) > 1 and all("id" in r for r in registros[:5]):
+        print(f"\n  INVENTARIO ({len(registros)} elementos):")
+        for r in registros[:40]:
+            titulo = r.get("title") or r.get("name") or r.get("description") or ""
+            print(f"      {str(r['id'])[:40]:<40} {str(titulo)[:70]}")
+        if len(registros) > 40:
+            print(f"      ... y {len(registros) - 40} más")
+
     campos = sorted({k for r in registros[:50] for k in r})
     print(f"\n  CAMPOS REALES ({len(campos)}):")
     for c in campos:
