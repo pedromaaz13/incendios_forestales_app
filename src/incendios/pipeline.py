@@ -254,6 +254,9 @@ def _informe_de_salud(
             quota_remaining=(
                 firms.cuota_restante if prefijo != "SEVIRI" else None
             ),
+            # El límite acompaña al restante: «4.946» sin saber de cuántos no
+            # dice si vamos bien o mal.
+            quota_limit=firms.cuota_limite if prefijo != "SEVIRI" else None,
         ))
 
     resultados = {

@@ -173,6 +173,7 @@ def test_block_matches_the_4_2_contract():
         # Solo FIRMS la declara; el resto publica null, que el frontend
         # distingue de "cero peticiones restantes".
         "quota_remaining",
+        "quota_limit",
     }
     assert bloque["last_success_at"].endswith("Z")
     assert bloque["age_seconds"] == 120
