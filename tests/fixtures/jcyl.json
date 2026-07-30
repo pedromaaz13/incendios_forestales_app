@@ -1,0 +1,65 @@
+{
+  "listaEmergencias": [
+    {
+      "comarca": { "codigo": 532, "nombre": "El Tiemblo" },
+      "cpm": "AV",
+      "emergencia_cpm": 5,
+      "emergencia_num1": 152,
+      "emergencia_num2": 26,
+      "estado": { "CODIGO": 1, "COLOR": "red", "COLOR_FONDO": "pink", "NOMBRE": "Activo" },
+      "falsa_alarma": false,
+      "fecha_inicio": "22/07/2026 13:02:00",
+      "fecha_nivel_maximo": "22/07/2026 22:32:32",
+      "huso": 30,
+      "latitud": 4468904,
+      "longitud": 352454,
+      "localidad": {
+        "id": 1701,
+        "municipio": { "id": 41, "nombre": "BURGOHONDO" },
+        "nombre": "BURGOHONDO",
+        "nombre_corto": "BURGOHONDO"
+      },
+      "medios": [
+        {
+          "ACTUANDO": true,
+          "CODIGO": -1,
+          "NOMBRE": "PMA-SA",
+          "PROVINCIA": { "id": 0 },
+          "TIPO": { "CATEGORIA": "Otros", "CODIGO": 8, "NOMBRE": "Otros" }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": 1,
+          "IMEI": "860264059492026",
+          "NOMBRE": "C2Y-01.1",
+          "PROVINCIA": { "id": 5, "nombre": "AVILA" },
+          "TIPO": { "CATEGORIA": "Terrestre", "CODIGO": 3, "NOMBRE": "Autobombas" }
+        },
+        {
+          "ACTUANDO": false,
+          "CODIGO": 3,
+          "IMEI": "864636061473845",
+          "NOMBRE": "C2Y-03.1",
+          "PROVINCIA": { "id": 5, "nombre": "AVILA" },
+          "TIPO": { "CATEGORIA": "Terrestre", "CODIGO": 3, "NOMBRE": "Autobombas" }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": 239,
+          "IMEI": "352075826664092",
+          "NOMBRE": "R2Y-17.1",
+          "PROVINCIA": { "id": 5, "nombre": "AVILA" },
+          "TIPO": { "CATEGORIA": "Terrestre", "CODIGO": 2, "NOMBRE": "Cuadrillas de tierra" }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": 194,
+          "IMEI": "357454070156995",
+          "NOMBRE": "PY-3.2",
+          "PROVINCIA": { "id": 9, "nombre": "BURGOS" },
+          "TIPO": { "CATEGORIA": "Terrestre", "CODIGO": 1, "NOMBRE": "Bulldozer" }
+        }
+      ]
+    }
+  ]
+}

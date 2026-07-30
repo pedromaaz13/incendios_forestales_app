@@ -15,6 +15,7 @@ import logging
 import httpx
 import pandas as pd
 
+from . import jcyl
 from .base import (
     STATUS_ACTIVE,
     STATUS_CONTROLLED,
@@ -169,26 +170,29 @@ class JsonApiSource(OfficialSource):
 # coordenada con la posición real.
 # ---------------------------------------------------------------------------
 
-JCYL = ArcGISSource(
+JCYL = JsonApiSource(
     meta=SourceMeta(
         source_id="jcyl",
         name="Junta de Castilla y León",
         region="Castilla y León",
-        url="",  # TODO: descubrir
+        # Esquema capturado el 30-07-2026 con DevTools sobre INFORCYL; el
+        # fixture está en `tests/fixtures/jcyl.json` y el parseo en `jcyl.py`.
+        # Falta la URL exacta del endpoint `emergencias` de servicios.jcyl.es.
+        url="",  # TODO: la ruta completa, y comprobar si exige token
+        # Provisional hasta medirlo. La coordenada capturada cae a ~6 km del
+        # casco urbano, o sea que es la del incendio y no el centroide del
+        # municipio — buena señal, pero un punto no es una medición.
         precision_m=500,
         ttl_seconds=300,
         attribution="Junta de Castilla y León",
-        notes="Publica nivel IGR y medios actuando. La fuente más completa.",
+        notes=(
+            "Publica estado, medios actuando y falsas alarmas. La fuente más "
+            "completa de las cinco. **Coordenadas en UTM ETRS89, no en grados**: "
+            "los campos se llaman `latitud`/`longitud` pero son northing/easting "
+            "del huso que declara `huso`."
+        ),
     ),
-    field_map={
-        "external_id": "",   # TODO
-        "status": "",        # TODO
-        "municipio": "",     # TODO
-        "provincia": "",     # TODO
-        "level": "",         # TODO — nivel IGR
-        "resources": "",     # TODO
-        "reported_at": "",   # TODO
-    },
+    extract=jcyl.extraer,
 )
 
 INFOCAM = ArcGISSource(
