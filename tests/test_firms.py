@@ -258,3 +258,60 @@ def _synthetic_csv(acq_time: list[int] | None = None) -> pd.DataFrame:
             "area_key": ["peninsula"] * n,
         }
     )
+
+
+# --- Reintentos ante fallo de transporte ------------------------------------
+#
+# Medido en producción: 2 de 12 ejecuciones murieron con `Network is unreachable`
+# en las 12 peticiones a la vez, mientras la anterior y la siguiente funcionaban.
+# Era la red del runner, no FIRMS. Sin reintento ese segundo cuesta media hora de
+# datos, porque el cron no vuelve hasta la siguiente marca.
+
+
+def test_un_fallo_de_red_transitorio_se_reintenta(monkeypatch):
+    monkeypatch.setattr(firms, "ESPERA_BASE_S", 0.0)  # sin dormir en la prueba
+    intentos = {"n": 0}
+
+    def handler(request):
+        intentos["n"] += 1
+        if intentos["n"] < 3:
+            raise httpx.ConnectError("Network is unreachable")
+        return httpx.Response(200, text=read_fixture("firms_viirs_snpp.csv"))
+
+    df = firms._fetch_one(_client(handler), "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
+
+    assert intentos["n"] == 3, "debería haber reintentado dos veces"
+    assert not df.empty, "el tercer intento trajo datos y deben conservarse"
+
+
+def test_se_rinde_tras_agotar_los_intentos(monkeypatch):
+    monkeypatch.setattr(firms, "ESPERA_BASE_S", 0.0)
+    intentos = {"n": 0}
+
+    def handler(request):
+        intentos["n"] += 1
+        raise httpx.ConnectError("Network is unreachable")
+
+    df = firms._fetch_one(_client(handler), "MODIS_NRT", "canarias", "1,2,3,4")
+
+    assert intentos["n"] == firms.INTENTOS
+    assert df.empty, "sin datos se devuelve vacío, no se propaga la excepción"
+
+
+def test_una_clave_agotada_no_se_reintenta(monkeypatch):
+    """FIRMS responde 200 con texto plano cuando la clave está agotada.
+
+    Repetir eso no la arregla: solo gastaría más cuota y retrasaría el aborto.
+    Solo se reintentan los fallos de transporte.
+    """
+    monkeypatch.setattr(firms, "ESPERA_BASE_S", 0.0)
+    intentos = {"n": 0}
+
+    def handler(request):
+        intentos["n"] += 1
+        return httpx.Response(200, text="Invalid MAP_KEY.")
+
+    df = firms._fetch_one(_client(handler), "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
+
+    assert intentos["n"] == 1, "una respuesta no-CSV no debe reintentarse"
+    assert df.empty

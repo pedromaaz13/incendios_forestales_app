@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
@@ -77,14 +78,38 @@ def _url(source: str, area: str) -> str:
     return f"{FIRMS_BASE}/{FIRMS_MAP_KEY}/{source}/{area}/{DAY_RANGE}"
 
 
+# Reintentos ante fallo de transporte, con espera creciente.
+#
+# Medido en producción el 30-07-2026: 2 de 12 ejecuciones murieron con
+# `Network is unreachable` en las 12 peticiones a la vez. No era FIRMS caído —la
+# ejecución anterior y la siguiente funcionaron— sino la red del runner fallando
+# unos segundos. Sin reintento, ese segundo cuesta media hora de datos, porque el
+# cron no vuelve hasta la siguiente marca.
+#
+# Solo se reintentan los fallos de **transporte**. Una respuesta no-CSV es la
+# clave agotada o inválida, y repetirla no la arregla: solo gastaría cuota.
+INTENTOS = 3
+ESPERA_BASE_S = 2.0
+
+
 def _fetch_one(client: httpx.Client, source: str, area_key: str, area: str) -> pd.DataFrame:
     url = _url(source, area)
-    try:
-        resp = client.get(url, timeout=60.0)
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        log.warning("FIRMS %s/%s falló: %s", source, area_key, exc)
-        return pd.DataFrame()
+
+    for intento in range(1, INTENTOS + 1):
+        try:
+            resp = client.get(url, timeout=60.0)
+            resp.raise_for_status()
+            break
+        except httpx.HTTPError as exc:
+            ultimo = intento == INTENTOS
+            log.warning(
+                "FIRMS %s/%s falló (intento %d/%d): %s%s",
+                source, area_key, intento, INTENTOS, exc,
+                "" if ultimo else " · se reintenta",
+            )
+            if ultimo:
+                return pd.DataFrame()
+            time.sleep(ESPERA_BASE_S * 2 ** (intento - 1))
 
     text = resp.text.strip()
     # FIRMS devuelve 200 con un cuerpo de texto plano cuando hay error de clave

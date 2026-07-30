@@ -122,6 +122,14 @@ jobs:
           # fallo silencioso que este proyecto existe para no cometer.
           set -o pipefail
 
+          # Un valor de `$GITHUB_OUTPUT` con la sintaxis `clave=valor` tiene que
+          # caber en una línea. Los logs que se interpolan aquí son multilínea,
+          # y Actions rechazaba la escritura con "Invalid format": el motivo del
+          # aborto se perdía justo cuando hacía falta leerlo.
+          _una_linea() {
+            tail -3 "$1" | tr '\n\r' '  ' | tr -s ' ' | head -c 200
+          }
+
           # Caer a la demo sin decir por qué convierte un problema de
           # configuración en un misterio. Cada rama deja su motivo en el
           # resumen del job.
@@ -144,7 +152,7 @@ jobs:
           if ! python scripts/descubrir_fuentes.py --firms | tee /tmp/firms.txt; then
             echo "::error::La clave de FIRMS no es válida o está agotada."
             cat /tmp/firms.txt
-            echo "motivo=La clave de FIRMS no funciona: $(head -c 200 /tmp/firms.txt)" >> "$GITHUB_OUTPUT"
+            echo "motivo=La clave de FIRMS no funciona: $(_una_linea /tmp/firms.txt)" >> "$GITHUB_OUTPUT"
             python scripts/build_demo_data.py
             echo "modo=demo" >> "$GITHUB_OUTPUT"
             exit 0
@@ -168,7 +176,7 @@ jobs:
             echo "::error::El pipeline abortó. No se publica nada; queda la"
             echo "::error::ejecución anterior con su antigüedad real."
             tail -30 /tmp/pipeline.txt
-            echo "motivo=El pipeline abortó: $(tail -3 /tmp/pipeline.txt | head -c 200)" >> "$GITHUB_OUTPUT"
+            echo "motivo=El pipeline abortó: $(_una_linea /tmp/pipeline.txt)" >> "$GITHUB_OUTPUT"
             echo "modo=abortado" >> "$GITHUB_OUTPUT"
             exit 1
           fi
