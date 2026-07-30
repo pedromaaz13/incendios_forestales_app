@@ -1024,6 +1024,16 @@ body {
 }
 
 /* Pista de zoom en la ficha */
+/* Texto secundario de la ficha: el titular del aviso y el desglose de los
+   cortes. Sin esta regla heredaban el tamaño de párrafo y competían visualmente
+   con los datos, que es justo al revés de lo que deben hacer. */
+.ficha__nota {
+  margin: 0.15rem 0 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--tinta-suave);
+}
+
 .ficha__pista {
   margin: 0.45rem 0 0;
   padding: 0.4rem 0.55rem;
@@ -1031,4 +1041,20 @@ body {
   background: var(--fondo-suave, rgb(0 0 0 / 0.04));
   font-size: 0.75rem;
   color: var(--tinta-suave);
+}
+
+/* Nivel de aviso de AEMET en la ficha. Colores oficiales de Meteoalerta, los
+   mismos que la capa del mapa: si aquí fueran otros, la ficha y el mapa
+   estarían diciendo cosas distintas del mismo aviso. */
+.ficha__aviso {
+  text-transform: capitalize;
+}
+.ficha__aviso--amarillo { color: #b8860b; }
+.ficha__aviso--naranja  { color: #d2691e; }
+.ficha__aviso--rojo     { color: #c0392b; }
+
+@media (prefers-color-scheme: dark) {
+  .ficha__aviso--amarillo { color: #f1c40f; }
+  .ficha__aviso--naranja  { color: #e67e22; }
+  .ficha__aviso--rojo     { color: #e74c3c; }
 }

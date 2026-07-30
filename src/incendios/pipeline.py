@@ -34,6 +34,7 @@ from . import aire as aire_mod
 from . import build as build_mod
 from . import clean as clean_mod
 from . import cluster as cluster_mod
+from . import contexto as contexto_mod
 from . import enrich as enrich_mod
 from . import export as export_mod
 from . import firms
@@ -129,6 +130,21 @@ def run(
     official, fires = merge_mod.match(official, fires)
     incidents = merge_mod.build_incidents(official, fires)
 
+    # --- contexto por incendio ----------------------------------------------
+    #
+    # Las capas de contexto se piden aquí y no en la publicación porque los
+    # incidentes ahora las incorporan: el viento interpolado en su posición, el
+    # aviso de AEMET vigente sobre su zona y los cortes de carretera próximos.
+    # Así la ficha del frontend no depende de qué capas haya encendido el
+    # usuario.
+
+    viento = wind_mod.fetch() if con_viento else None
+    calidad_aire = aire_mod.fetch() if con_aire else None
+    cortes = trafico_mod.fetch() if con_trafico else None
+    avisos = aemet_mod.fetch() if con_avisos else None
+
+    incidents = contexto_mod.enriquecer(incidents, viento, avisos, cortes)
+
     # --- validación ---------------------------------------------------------
 
     validate_mod.validate_or_abort(incidents)
@@ -159,11 +175,6 @@ def run(
         manifest["degraded_reason"] = motivo
 
     # --- publicación atómica ------------------------------------------------
-
-    viento = wind_mod.fetch() if con_viento else None
-    calidad_aire = aire_mod.fetch() if con_aire else None
-    cortes = trafico_mod.fetch() if con_trafico else None
-    avisos = aemet_mod.fetch() if con_avisos else None
 
     publish_mod.publish_atomically([
         ("capas de datos", lambda: _escribir_datos(

@@ -220,3 +220,39 @@ export function resolucionSensor(lista: string | null | undefined): string | nul
   if (v.includes('MODIS')) return '1 km';
   return null;
 }
+
+/**
+ * Frase de viento para la ficha.
+ *
+ * Se escribe el punto cardinal de origen y el de destino a la vez —«del NO,
+ * sopla hacia el SE»— porque en castellano el viento se nombra por su origen
+ * pero lo que le interesa a quien mira el mapa es a dónde va. Dar solo uno de
+ * los dos obliga a hacer la resta mentalmente, y es donde la gente se equivoca.
+ */
+export function fraseViento(p: {
+  viento_kmh: number | null;
+  viento_rachas_kmh: number | null;
+  viento_hacia_deg: number | null;
+  viento_cardinal_desde: string | null;
+}): string | null {
+  if (p.viento_kmh === null || p.viento_hacia_deg === null) return null;
+
+  const desde = p.viento_cardinal_desde ?? '—';
+  const hacia = cardinal(p.viento_hacia_deg);
+  const rachas =
+    p.viento_rachas_kmh !== null && p.viento_rachas_kmh > p.viento_kmh + 5
+      ? `, rachas de ${Math.round(p.viento_rachas_kmh)} km/h`
+      : '';
+
+  return `Del ${desde} a ${Math.round(p.viento_kmh)} km/h${rachas}. Sopla hacia el ${hacia}.`;
+}
+
+const CARDINALES = [
+  'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+  'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO',
+] as const;
+
+/** Punto cardinal en castellano: O de oeste, no W. */
+export function cardinal(grados: number): string {
+  return CARDINALES[Math.round((grados % 360) / 22.5) % 16];
+}
