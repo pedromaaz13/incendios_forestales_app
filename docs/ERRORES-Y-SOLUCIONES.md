@@ -393,6 +393,36 @@ en pie con su antigüedad real, que crecerá a la vista. El job en rojo es la
 alerta. La demo se conserva solo para el arranque en frío —repositorio recién
 clonado, sin clave— que es una situación distinta y legítima.
 
+### F0c · `$GITHUB_OUTPUT` rechazaba el motivo del aborto por ser multilínea
+
+Bug **introducido por el arreglo de F0**, visto en la primera ejecución que lo
+ejercitó. La rama de aborto escribía:
+
+```bash
+echo "motivo=El pipeline abortó: $(tail -3 /tmp/pipeline.txt | head -c 200)" >> "$GITHUB_OUTPUT"
+```
+
+`tail -3` devuelve tres líneas, y con la sintaxis `clave=valor` un valor de
+`$GITHUB_OUTPUT` tiene que caber en una. Actions respondía
+`Invalid format` y **el motivo se perdía justo cuando hacía falta leerlo**.
+
+**Solución.** Un ayudante `_una_linea` que aplana con `tr` antes de recortar.
+
+### F5 · Un fallo de red de un segundo costaba media hora de datos
+
+`firms.py` no reintentaba. Medido el 30-07-2026: 2 de 12 ejecuciones murieron con
+`Network is unreachable` en las 12 peticiones a la vez, mientras la ejecución
+anterior y la siguiente funcionaban con normalidad. No era FIRMS caído: era la
+red del runner fallando unos segundos.
+
+Con el cron a 30 minutos, cada fallo así es media hora sin actualizar en una
+aplicación cuya razón de existir es la latencia.
+
+**Solución.** Tres intentos con espera creciente (2 s, 4 s), y **solo ante fallos
+de transporte**. Una respuesta no-CSV es la clave agotada o inválida, y repetirla
+no la arregla: solo gastaría cuota y retrasaría el aborto. Hay un test por cada
+uno de los tres caminos.
+
 ### F1 · El scope `workflow` bloqueaba toda edición de Actions
 
 **RESUELTO.** Ni el token del agente ni el cacheado en el llavero de macOS tenían
