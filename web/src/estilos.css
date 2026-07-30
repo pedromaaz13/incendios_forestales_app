@@ -619,6 +619,15 @@ body {
 .tarjeta__estado[data-estado="controlado"] {
   color: var(--ok);
 }
+/* Sin estado declarado: gris, no rojo.
+   El rojo comunica urgencia confirmada, y aquí no hay confirmación de nada más
+   que de que hubo calor. Pintar de rojo 79 tarjetas que nadie ha declarado
+   activas es la versión cromática del verbo de certeza que ya se quitó del
+   texto. */
+.tarjeta__estado[data-estado="sin-declarar"] {
+  color: var(--muted);
+  font-weight: 500;
+}
 
 .vacio {
   padding: 24px 16px;
@@ -1057,4 +1066,14 @@ body {
   .ficha__aviso--amarillo { color: #f1c40f; }
   .ficha__aviso--naranja  { color: #e67e22; }
   .ficha__aviso--rojo     { color: #e74c3c; }
+}
+
+/* Nota que se enseña siempre, no solo cuando el control está inactivo. Explica
+   qué se está eligiendo antes de elegirlo, no después. */
+.filtro__nota--siempre {
+  display: block;
+  margin: -2px 0 10px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted);
 }

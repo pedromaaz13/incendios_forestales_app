@@ -32,10 +32,18 @@ FIRMS_SOURCES = (
 
 # bbox = west,south,east,north. Canarias va aparte: si metes todo en un solo
 # bbox arrastras medio Atlántico y Marruecos, y FIRMS cobra por área.
+#
+# **Los bboxes no se solapan, y eso hay que comprobarlo al añadir uno.** Hubo un
+# tercero, `baleares` = 1.10,38.60,4.40,40.15, contenido por completo dentro de
+# `peninsula`: cuatro de las doce peticiones —una por sensor— pedían datos que la
+# otra ya traía. Se detectó comparando los bboxes, no por un fallo: el sistema
+# funcionaba, solo gastaba un tercio de la cuota de FIRMS en nada.
+#
+# El invariante está en `tests/test_config.py`, porque comprobarlo a ojo es
+# justo lo que ya falló una vez.
 AREAS: dict[str, str] = {
     "peninsula": "-9.60,35.85,4.40,43.90",
     "canarias": "-18.30,27.55,-13.30,29.50",
-    "baleares": "1.10,38.60,4.40,40.15",
 }
 
 DAY_RANGE = 3  # días hacia atrás por petición (máximo permitido: 10)

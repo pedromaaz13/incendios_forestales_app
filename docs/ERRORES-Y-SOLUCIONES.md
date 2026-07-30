@@ -33,6 +33,34 @@ detección satelital sin confirmar.
 
 ## A · Lógica de fusión y del pipeline
 
+### A0 · «Activo» se afirmaba sin que nadie lo hubiera declarado
+
+**El fallo de más alcance que ha tenido este proyecto: afectaba al 100 % de lo
+publicado.**
+
+Los 79 incendios de producción salían con `status = "activo"` y la interfaz los
+pintaba en rojo con esa palabra. Internamente `activo` solo significaba
+«detectado dentro de la ventana reciente». Con 6,4 h de antigüedad y ninguna
+pasada posterior, muchos de esos fuegos podían estar apagados.
+
+Y ninguno estaba confirmado por nadie: hoy no hay un solo parte oficial en
+producción.
+
+Por qué costó verlo: **no había nada que mirar**. El dato era plausible, el mapa
+funcionaba, los tests pasaban y el vocabulario estaba en el contrato 4.3. Lo
+único que fallaba era que la palabra afirmaba más de lo que el dato sostiene, y
+eso no lo detecta ninguna aserción sobre valores.
+
+**Solución.** `status` queda **nulo** sin parte oficial y `status_origen` dice
+quién lo afirma (`oficial` | `satelite`). Lo que el dato satelital sí sostiene
+—cuánto hace que se vio calor— se publica en `ultima_observacion_h`, y la interfaz
+enseña «Calor detectado hace 6 h» en gris en vez de «Activo» en rojo.
+
+El **invariante 9** aborta la publicación si algún incidente declara estado sin
+`official_confirmed`. Va como invariante y no como test porque el modo de fallo es
+que alguien rellene el hueco con `fillna("activo")` para que la interfaz «quede
+mejor».
+
 ### A1 · Dos partes oficiales se emparejaban con el mismo incendio
 
 **Gravedad: grave.** `merge.py::match`, detectado por
@@ -192,6 +220,21 @@ peor fallo que puede cometer este sistema.
 Se desbloquea con las DevTools sobre el visor autonómico. Procedimiento en
 `docs/COMO-CONECTAR-LAS-FUENTES.md`.
 
+### C3b · El centroide municipal no vale para decir «a X km de tu pueblo»
+
+Al implementar la distancia al núcleo de población, el primer impulso fue usar
+`config/municipios.geojson`, que ya estaba descargada. Son **polígonos de término
+municipal**: medido sobre la capa real, el centroide está a 3,3 km del pueblo en
+el municipio mediano y a **23,6 km** en el más grande.
+
+Publicar «el foco está a 4,2 km de tu pueblo» con 23 km de margen posible es
+falsa precisión sobre el dato más sensible que da este visor.
+
+**Solución.** La colección `nuc` de la OGC API del IGN —37.497 núcleos con nombre,
+población y coordenadas—, encontrada con la sonda. `skipGeometry=true` no es una
+optimización: cada núcleo trae su huella como MultiPolygon y los 37.497 completos
+pasan de 1 GB; sin geometría son 6 MB.
+
 ### C4 · El índice de riesgo de AEMET no sirve para esto
 
 Responde `404 · No hay datos que satisfagan esos criterios`, y aunque
@@ -204,6 +247,26 @@ calor y tormenta declarados oficialmente— y sí son datos.
 ---
 
 ## D · Frontend
+
+### D0 · La capa de focos nacía sin filtro
+
+`montarCapaDiferida(mapa, 'hotspots')` se lanza con `void` —es asíncrona, hay que
+descargar su GeoJSON— y `aplicarFiltros` corría inmediatamente después, antes de
+que la capa existiera. `mapa.getLayer(CAPA_HOTSPOTS)` devolvía falso y el
+`setFilter` no llegaba a ejecutarse nunca.
+
+FIRMS se pide con 3 días de margen (`DAY_RANGE = 3`). Medido en producción:
+**579 de los 1.182 focos publicados tenían más de 24 h**, con un máximo de 58 h, y
+se pintaban todos mientras el control decía «1 día».
+
+Por qué costó verlo: el mapa enseñaba **más** focos de los que decía, no menos.
+Nadie cuenta 600 puntos a ojo, y un exceso de datos no se lee como un fallo.
+
+Lo destapó un test nuevo que comprobaba otra cosa —que los focos de confianza
+baja no se vieran por defecto— y encontró 15 visibles.
+
+**Solución.** `.then(() => aplicarFiltros(...))` sobre el montaje diferido, más un
+test que comprueba que la capa tiene filtro al arrancar.
 
 ### D1 · MapLibre no monta la capa y no lo dice — diagnóstico inicial equivocado
 
@@ -422,6 +485,31 @@ aplicación cuya razón de existir es la latencia.
 de transporte**. Una respuesta no-CSV es la clave agotada o inválida, y repetirla
 no la arregla: solo gastaría cuota y retrasaría el aborto. Hay un test por cada
 uno de los tres caminos.
+
+### F6 · Un bbox contenido en otro gastaba un tercio de la cuota de FIRMS
+
+`baleares` = `1.10,38.60,4.40,40.15` está **dentro por completo** de `peninsula`
+= `-9.60,35.85,4.40,43.90`. Cuatro de las doce peticiones —una por sensor— pedían
+datos que la otra ya traía, y el duplicado se descartaba aguas abajo después de
+haber gastado la petición.
+
+Nada fallaba. Solo se desperdiciaba un tercio de la cuota, del tiempo de pipeline
+y de la superficie de fallo de red — y desde que hay reintentos, un tercio de los
+reintentos.
+
+**Solución.** Fuera el bbox, y un invariante en `tests/test_config.py` que
+comprueba que ninguna pareja de bboxes se solapa, más su contrapartida: que los
+puntos de control de cada territorio siguen cubiertos. Sin el segundo test,
+«no se solapan» se satisfaría borrando bboxes.
+
+### F7 · La cuota de FIRMS se ignoraba
+
+FIRMS devuelve `Remaining-request-endpoint` en cada respuesta y se tiraba. Agotar
+la cuota se manifiesta como **cero incendios**, que es exactamente el fallo que
+este proyecto existe para no cometer, y no habría aviso previo.
+
+**Solución.** Se lee, se guarda el mínimo de las peticiones en paralelo, se avisa
+por debajo de 50 y se publica en `sources.json`.
 
 ### F1 · El scope `workflow` bloqueaba toda edición de Actions
 

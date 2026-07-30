@@ -80,7 +80,7 @@ function contenido(p: PropiedadesIncidente): string {
     )}</h2>
     <p class="ficha__provincia">
       ${texto(p.provincia ?? (p.municipio ? 'Provincia no facilitada' : 'Sin nombre de municipio disponible'))} ·
-      ${etiquetaEstado(p.status)}
+      ${etiquetaEstado(p.status, p.ultima_observacion_h)}
     </p>
     ${dato('Confirmado por', listaFuentes(p.confirmed_by))}
 
@@ -140,11 +140,25 @@ function bloqueContexto(p: PropiedadesIncidente): string {
         }</b></p>`
       : '';
 
-  if (!viento && !aviso && !cortes && !ambiente) return '';
+  const poblacion =
+    p.nucleo_cercano && p.nucleo_cercano_km !== null
+      ? `<p class="ficha__dato"><span>Núcleo habitado más cercano</span><b>${texto(
+          p.nucleo_cercano,
+        )} · ${numero(p.nucleo_cercano_km, 1)} km</b></p>${
+          p.nucleo_cercano_habitantes
+            ? `<p class="ficha__nota">${numero(
+                p.nucleo_cercano_habitantes,
+              )} habitantes. Distancia al centro del núcleo, no a la primera casa.</p>`
+            : ''
+        }`
+      : '';
+
+  if (!viento && !aviso && !cortes && !ambiente && !poblacion) return '';
 
   return `
     <div class="ficha__seccion">
       <h3>Condiciones en la zona</h3>
+      ${poblacion}
       ${viento ? `<p class="ficha__dato"><span>Viento</span><b>${texto(viento)}</b></p>` : ''}
       ${ambiente}
       ${aviso}
@@ -203,6 +217,24 @@ function bloqueSatelital(p: PropiedadesIncidente): string {
       ${dato('FRP acumulado', `${numero(p.frp_total_mw, 1)} MW`)}
       ${dato('Primera detección', fechaHora(p.first_detected))}
       ${dato('Última detección', fechaHora(p.last_detected))}
+      ${
+        p.focos_recientes !== null && p.focos_recientes !== undefined
+          ? `${dato('Focos nuevos (últimas 6 h)', numero(p.focos_recientes))}
+             ${
+               p.focos_recientes > 0
+                 ? `<p class="ficha__nota">
+                      Equivale a unas ${numero(p.crecimiento_ha_h, 1)} ha nuevas
+                      por hora <b>ya detectadas</b>. No es una previsión de lo que
+                      crecerá.
+                    </p>`
+                 : `<p class="ficha__nota">
+                      Sin focos nuevos en las últimas 6 h. Puede estar apagándose,
+                      bajo nubes, o sin pasada de satélite reciente: la ausencia
+                      de detección no confirma que se haya extinguido.
+                    </p>`
+             }`
+          : ''
+      }
       <p class="ficha__pista">
         Acerca el mapa para ver los ${numero(p.n_hotspots)} focos por separado.
       </p>

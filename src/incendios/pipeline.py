@@ -97,7 +97,10 @@ def run(
     # pasadas de NOAA-20 y NOAA-21. El riesgo 3 de la sección 11 exige que ese
     # número sea cierto: es la única pista si la máscara oculta un incendio real.
     gdf = clean_mod.to_gdf(crudos)
-    tras_confianza = clean_mod.filter_confidence(gdf)
+    # Las de confianza baja no se tiran: se conservan aparte, se publican
+    # etiquetadas y el control «Todas» del visor las revela. No entran al
+    # clustering, así que no crean incidentes.
+    tras_confianza, baja_confianza = clean_mod.split_confidence(gdf)
     tras_exclusiones = clean_mod.apply_exclusions(tras_confianza)
     hotspots = clean_mod.deduplicate_spatial(tras_exclusiones)
 
@@ -120,6 +123,13 @@ def run(
         raise SystemExit(1)
 
     hotspots = cluster_mod.assign_fire_ids(hotspots)
+
+    # Las de confianza baja se recortan a España igual que las demás —sin esto
+    # aparecerían focos en Marruecos— y se marcan sin `fire_id`, porque no
+    # pertenecen a ningún incendio: no han pasado por el clustering.
+    if not baja_confianza.empty:
+        baja_confianza, _ = enrich_mod.clip_to_spain(baja_confianza)
+        baja_confianza["fire_id"] = None
     fires = enrich_mod.enrich_admin(cluster_mod.build_fires(hotspots))
     perimeters = cluster_mod.build_perimeters(hotspots)
     # RF-P-08: un perímetro derivado del hull nunca se publica sin la marca.
@@ -143,7 +153,9 @@ def run(
     cortes = trafico_mod.fetch() if con_trafico else None
     avisos = aemet_mod.fetch() if con_avisos else None
 
-    incidents = contexto_mod.enriquecer(incidents, viento, avisos, cortes)
+    incidents = contexto_mod.enriquecer(
+        incidents, viento, avisos, cortes, hotspots=hotspots
+    )
 
     # --- validación ---------------------------------------------------------
 
@@ -179,7 +191,7 @@ def run(
     publish_mod.publish_atomically([
         ("capas de datos", lambda: _escribir_datos(
             hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes,
-            avisos, outputs,
+            avisos, outputs, baja_confianza,
         )),
         ("sources.json", lambda: informe.write(outputs.sources_json)),
         ("manifest.json", lambda: build_mod.write_manifest(manifest, outputs.manifest)),
@@ -237,6 +249,11 @@ def _informe_de_salud(
             last_success_at=inicio if n else None,
             records=n,
             attribution="NASA FIRMS" if prefijo != "SEVIRI" else "EUMETSAT LSA-SAF",
+            # Solo FIRMS declara cuota. El resto queda en None, que el frontend
+            # distingue de "cero peticiones restantes".
+            quota_remaining=(
+                firms.cuota_restante if prefijo != "SEVIRI" else None
+            ),
         ))
 
     resultados = {
@@ -250,14 +267,24 @@ def _informe_de_salud(
 
 def _escribir_datos(
     hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes,
-    avisos, outputs,
+    avisos, outputs, baja_confianza=None,
 ) -> None:
     """Todas las capas menos `sources.json` y `manifest.json`.
 
     Van juntas en un solo paso porque, entre ellas, el orden da igual: lo que
     hace atómica la publicación es que el manifiesto se escriba el último.
     """
-    export_mod._write_geojson(hotspots, outputs.hotspots_geojson, export_mod.HOTSPOT_WEB_FIELDS)
+    # Las fiables y las de confianza baja van al mismo fichero: el frontend las
+    # distingue por `confidence_pct` con el control que ya tenía, y un fichero
+    # aparte obligaría a una segunda petición para algo que se filtra en GPU.
+    todos_los_focos = (
+        pd.concat([hotspots, baja_confianza], ignore_index=True)
+        if baja_confianza is not None and not baja_confianza.empty
+        else hotspots
+    )
+    export_mod._write_geojson(
+        todos_los_focos, outputs.hotspots_geojson, export_mod.HOTSPOT_WEB_FIELDS
+    )
     export_mod._write_geojson(fires, outputs.fires_geojson, export_mod.FIRE_WEB_FIELDS)
     export_mod._write_geojson(
         perimeters, outputs.perimeters_geojson, ["fire_id", "hull_area_ha", "is_estimate"]

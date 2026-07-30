@@ -401,7 +401,9 @@ def main() -> None:
     DESTINO.mkdir(parents=True, exist_ok=True)
 
     crudos = construir_hotspots()
-    hotspots = clean_mod.clean(crudos)
+    gdf_crudo = clean_mod.to_gdf(crudos)
+    fiables, baja_confianza = clean_mod.split_confidence(gdf_crudo)
+    hotspots = clean_mod.deduplicate_spatial(clean_mod.apply_exclusions(fiables))
     suprimidos_industrial = int(
         ((crudos["latitude"].sub(38.703).abs() < 0.02)
          & (crudos["longitude"].sub(-4.092).abs() < 0.02)).sum()
@@ -443,6 +445,8 @@ def main() -> None:
         viento=construir_viento(),
         avisos=construir_avisos(),
         cortes=construir_trafico(official),
+        hotspots=hotspots,
+        ahora=NOW,
     )
 
     validate_mod.validate_or_abort(incidents)
@@ -472,10 +476,20 @@ def main() -> None:
     manifest["degraded"] = degradado or manifest["degraded"]
     manifest["degraded_reason"] = motivo or manifest["degraded_reason"]
 
-    hotspots_web = hotspots[
-        ["acq_dt", "frp_mw", "confidence_pct", "fire_id", "instrument", "daynight", "geometry"]
-    ].copy()
-    hotspots_web["acq_dt"] = hotspots_web["acq_dt"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Las de confianza baja acompañan a las fiables en el mismo fichero, igual
+    # que en producción, para que el control «Incluir baja» del visor tenga algo
+    # que revelar y el E2E pueda comprobarlo.
+    columnas = ["acq_dt", "frp_mw", "confidence_pct", "fire_id", "instrument",
+                "daynight", "confianza_baja", "geometry"]
+    baja = baja_confianza.copy()
+    baja["fire_id"] = None
+    hotspots_web = pd.concat(
+        [hotspots.assign(confianza_baja=False)[columnas], baja[columnas]],
+        ignore_index=True,
+    )
+    hotspots_web["acq_dt"] = pd.to_datetime(
+        hotspots_web["acq_dt"], utc=True
+    ).dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     perimeters = perimeters.copy()
     perimeters["is_estimate"] = True  # RF-P-08: nunca sin la marca

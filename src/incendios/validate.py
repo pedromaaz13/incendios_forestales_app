@@ -158,12 +158,38 @@ def check(incidents: gpd.GeoDataFrame) -> list[Violation]:
                 _ids(incidents, extinguido),
             ))
 
-        estado_invalido = ~incidents["status"].isin(VALID_STATUS)
+        # `notna()`: el nulo es válido y significa "nadie lo ha declarado".
+        estado_invalido = incidents["status"].notna() & ~incidents["status"].isin(VALID_STATUS)
         if estado_invalido.any():
             v.append(Violation(
                 8, "status fuera del vocabulario",
                 f"valores no permitidos: {sorted(set(incidents.loc[estado_invalido, 'status'].astype(str)))}",
                 _ids(incidents, estado_invalido),
+            ))
+
+    # 9 · ningún estado sin quien lo afirme
+    #
+    # Es el invariante que impide repetir el fallo de más alcance que ha tenido
+    # este proyecto: los 79 incendios de producción se publicaban con
+    # `status = "activo"` y la interfaz los pintaba en rojo con esa palabra, sin
+    # que ningún servicio de extinción lo hubiera declarado. "Activo" es una
+    # afirmación sobre el presente hecha a partir de una observación de hace
+    # horas, y el aviso de dominio prohíbe los verbos de certeza.
+    #
+    # Va como invariante y no como test porque el modo de fallo es que alguien
+    # rellene el hueco con un valor por defecto —`fillna("activo")`— para que la
+    # interfaz "quede mejor". Aquí eso aborta la publicación.
+    if "status" in incidents.columns and "official_confirmed" in incidents.columns:
+        afirmado = incidents["status"].notna()
+        sin_respaldo = afirmado & ~incidents["official_confirmed"].fillna(False).astype(bool)
+        if sin_respaldo.any():
+            v.append(Violation(
+                9, "estado afirmado sin parte oficial",
+                f"{int(sin_respaldo.sum())} incidentes declaran un estado "
+                f"({sorted(set(incidents.loc[sin_respaldo, 'status'].astype(str)))}) "
+                "sin confirmación oficial que lo respalde. Una detección satelital "
+                "dice que hubo calor, no que el fuego siga vivo",
+                _ids(incidents, sin_respaldo),
             ))
 
     return v

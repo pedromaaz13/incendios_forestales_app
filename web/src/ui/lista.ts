@@ -33,12 +33,32 @@ function texto(valor: string | null | undefined): string {
   return d.innerHTML;
 }
 
+/**
+ * Orden de la lista.
+ *
+ * Los que tienen parte oficial van primero, y entre ellos manda la gravedad
+ * declarada. El resto se ordena por **observación más reciente**: sin estado
+ * declarado, lo que distingue un incendio de otro es cuánto hace que se vio
+ * calor, y un fuego visto hace 40 minutos importa más que uno visto hace 20 h.
+ *
+ * Antes todos empataban, porque los 79 publicaban `activo` y el orden acababa
+ * decidiéndolo el FRP — que mide calor, no urgencia.
+ */
 export function ordenarPorGravedad(
   incidentes: PropiedadesIncidente[],
 ): PropiedadesIncidente[] {
   return [...incidentes].sort((a, b) => {
-    const estado = (ORDEN_ESTADO[a.status] ?? 9) - (ORDEN_ESTADO[b.status] ?? 9);
-    if (estado !== 0) return estado;
+    const oficial = Number(!!b.status) - Number(!!a.status);
+    if (oficial !== 0) return oficial;
+
+    if (a.status && b.status) {
+      const estado = (ORDEN_ESTADO[a.status] ?? 9) - (ORDEN_ESTADO[b.status] ?? 9);
+      if (estado !== 0) return estado;
+    } else {
+      const visto = (a.ultima_observacion_h ?? 1e9) - (b.ultima_observacion_h ?? 1e9);
+      if (visto !== 0) return visto;
+    }
+
     return (b.frp_total_mw ?? 0) - (a.frp_total_mw ?? 0);
   });
 }
@@ -118,8 +138,8 @@ function tarjeta(p: PropiedadesIncidente): string {
           <span class="tarjeta__lugar">${texto(lugar)}${provincia}</span>
         </span>
         <span class="tarjeta__meta">
-          <span class="tarjeta__estado" data-estado="${texto(p.status)}">
-            ${etiquetaEstado(p.status)}
+          <span class="tarjeta__estado" data-estado="${texto(p.status ?? 'sin-declarar')}">
+            ${etiquetaEstado(p.status, p.ultima_observacion_h)}
           </span>
           ${igr}
           ${medios}

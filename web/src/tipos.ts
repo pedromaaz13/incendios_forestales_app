@@ -18,7 +18,17 @@ export interface PropiedadesIncidente {
   satellite_confirmed: boolean;
   official_confirmed: boolean;
   confirmed_by: string;
-  status: Estado;
+  /**
+   * Estado declarado por un servicio de extinción.
+   *
+   * **Nulo cuando nadie lo ha declarado**, que hoy es el caso de todos los
+   * incendios en producción. Antes se rellenaba con `activo`, y la interfaz lo
+   * pintaba en rojo con esa palabra sin que ningún servicio lo respaldara: una
+   * afirmación sobre el presente hecha con una observación de hace horas.
+   */
+  status: Estado | null;
+  /** Quién afirma el estado. Con `satelite`, `status` es nulo. */
+  status_origen: 'oficial' | 'satelite' | null;
   municipio: string | null;
   provincia: string | null;
   igr_level: number | null;
@@ -27,6 +37,8 @@ export interface PropiedadesIncidente {
   resources_people: number | null;
   resources_text?: string | null;
   n_hotspots: number;
+  /** Horas desde la última vez que un satélite vio calor ahí. */
+  ultima_observacion_h: number | null;
   /** Qué sensores lo vieron. Cambia la resolución con que se conoce. */
   sensors: string | null;
   /** Radio equivalente del área estimada, en km. Misma estimación, otra forma. */
@@ -51,6 +63,14 @@ export interface PropiedadesIncidente {
   cortes_cerca: number | null;
   /** De esos, los que la DGT declara causados por incendio. Nunca inferido. */
   cortes_cerca_por_incendio: number | null;
+  /** Focos vistos en las últimas 6 h. Cero puede ser apagado, nube o sin pasada. */
+  focos_recientes: number | null;
+  /** Superficie nueva detectada por hora. Observada, no prevista. */
+  crecimiento_ha_h: number | null;
+  /** Núcleo de población habitado más cercano. Nulo si está a más de 50 km. */
+  nucleo_cercano: string | null;
+  nucleo_cercano_km: number | null;
+  nucleo_cercano_habitantes: number | null;
   frp_total_mw: number | null;
   intensity: Intensidad | null;
   area_est_ha: number | null;

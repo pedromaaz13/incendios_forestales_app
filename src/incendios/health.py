@@ -49,6 +49,11 @@ class SourceHealth:
     error: str | None = None
     consecutive_failures: int = 0
     attribution: str = ""
+    # Peticiones que quedan de cuota, cuando la fuente la declara. Solo FIRMS lo
+    # hace hoy. Se publica porque agotar la cuota se manifiesta como "cero
+    # incendios", y ese es el fallo que este proyecto existe para no cometer:
+    # con este número, el panel de fuentes lo dice antes de que pase.
+    quota_remaining: int | None = None
 
     def age_seconds(self, now: datetime) -> int | None:
         if self.last_success_at is None:
@@ -83,6 +88,7 @@ class SourceHealth:
             "error": self.error,
             "consecutive_failures": int(self.consecutive_failures),
             "attribution": self.attribution,
+            "quota_remaining": self.quota_remaining,
         }
 
 

@@ -315,3 +315,63 @@ def test_una_clave_agotada_no_se_reintenta(monkeypatch):
 
     assert intentos["n"] == 1, "una respuesta no-CSV no debe reintentarse"
     assert df.empty
+
+
+# --- Cuota declarada por FIRMS ----------------------------------------------
+
+
+def test_la_cuota_se_lee_de_la_cabecera(monkeypatch):
+    """FIRMS manda `Remaining-request-endpoint` en cada respuesta.
+
+    Hasta ahora se tiraba, y agotar la cuota se manifestaba como "cero
+    incendios": el fallo que este proyecto existe para no cometer.
+    """
+    monkeypatch.setattr(firms, "cuota_restante", None)
+    handler = lambda request: httpx.Response(
+        200,
+        text=read_fixture("firms_viirs_snpp.csv"),
+        headers={"Remaining-request-endpoint": "412"},
+    )
+
+    firms._fetch_one(_client(handler), "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
+
+    assert firms.cuota_restante == 412
+
+
+def test_con_varias_peticiones_se_guarda_la_cuota_menor(monkeypatch):
+    """Las peticiones van en paralelo y cada una trae su recuento.
+
+    El mínimo es el que describe la situación al acabar la ejecución; quedarse
+    con el último sería quedarse con el de una carrera indeterminada.
+    """
+    monkeypatch.setattr(firms, "cuota_restante", None)
+    valores = iter(["300", "180", "250"])
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            text=read_fixture("firms_viirs_snpp.csv"),
+            headers={"Remaining-request-endpoint": next(valores)},
+        )
+
+    client = _client(handler)
+    for _ in range(3):
+        firms._fetch_one(client, "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
+
+    assert firms.cuota_restante == 180
+
+
+def test_una_cuota_ilegible_no_tumba_la_ingesta(monkeypatch):
+    """Si FIRMS cambia el formato de la cabecera, se avisa y se sigue: la cuota
+    es telemetría, no un dato del que dependa el mapa."""
+    monkeypatch.setattr(firms, "cuota_restante", None)
+    handler = lambda request: httpx.Response(
+        200,
+        text=read_fixture("firms_viirs_snpp.csv"),
+        headers={"Remaining-request-endpoint": "muchas"},
+    )
+
+    df = firms._fetch_one(_client(handler), "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
+
+    assert firms.cuota_restante is None
+    assert not df.empty, "la ingesta debe continuar aunque la cuota sea ilegible"

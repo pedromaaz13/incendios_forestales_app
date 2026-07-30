@@ -27,7 +27,13 @@ export interface EstadoFiltros {
 
 export const FILTROS_INICIALES: EstadoFiltros = {
   periodo: 1,
-  confianza: 'todas',
+  // Arranca en «media», no en «todas».
+  //
+  // Desde que las detecciones de confianza baja se conservan en vez de
+  // descartarse, «todas» incluye quemas agrícolas y reflejos. Enseñarlas por
+  // defecto llenaría el mapa de puntos que el propio satélite no se cree.
+  // Quedan a un clic para quien las quiera, que es lo que las hace medibles.
+  confianza: 'media',
   sensores: new Set(['VIIRS', 'MODIS', 'SEVIRI']),
   origen: 'todos',
 };
@@ -157,8 +163,8 @@ export function construirControles(
       <div class="segmentado" role="radiogroup" aria-labelledby="rot-confianza" data-grupo="confianza">
         ${(
           [
-            ['todas', 'Todas'],
-            ['media', '≥ Media'],
+            ['todas', 'Incluir baja'],
+            ['media', 'Fiables'],
             ['alta', 'Solo alta'],
           ] as const
         )
@@ -170,6 +176,13 @@ export function construirControles(
           .join('')}
       </div>
     </div>
+
+    <!-- El aviso va junto al control, no en la leyenda: se lee al decidir, no
+         después de haber decidido. -->
+    <p class="filtro__nota filtro__nota--siempre" id="nota-confianza">
+      «Incluir baja» añade detecciones que el propio satélite marca como poco
+      fiables: suelen ser quemas agrícolas o reflejos, no incendios.
+    </p>
 
     <div class="filtro">
       <span class="filtro__rotulo" id="rot-origen">Origen</span>

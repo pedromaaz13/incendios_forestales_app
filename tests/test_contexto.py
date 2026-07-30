@@ -268,3 +268,151 @@ def test_enriquecer_sin_ninguna_capa_de_contexto():
 def test_sin_incendios_no_lanza():
     vacio = gpd.GeoDataFrame({"id": []}, geometry=[], crs=CRS_WGS84)
     assert contexto.enriquecer(vacio, viento=_viento((40.0, -3.0, 90.0, 10.0))).empty
+
+
+# --- Ritmo de crecimiento ---------------------------------------------------
+
+
+def _hotspots(*items: tuple[str, float]) -> gpd.GeoDataFrame:
+    """(fire_id, horas_atras) por foco."""
+    ahora = pd.Timestamp("2026-07-30T12:00:00Z")
+    return gpd.GeoDataFrame(
+        {
+            "fire_id": [i[0] for i in items],
+            "acq_dt": [ahora - pd.Timedelta(hours=i[1]) for i in items],
+        },
+        geometry=[Point(-3.0, 40.0)] * len(items),
+        crs=CRS_WGS84,
+    )
+
+
+AHORA = pd.Timestamp("2026-07-30T12:00:00Z")
+
+
+def test_cuenta_solo_los_focos_de_la_ventana_reciente():
+    """Un foco de hace 20 h no describe el ritmo de ahora."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+    hs = _hotspots(("f0", 1.0), ("f0", 3.0), ("f0", 20.0))
+
+    fila = contexto.anadir_ritmo(inc, hs, ahora=AHORA).iloc[0]
+
+    assert fila["focos_recientes"] == 2
+
+
+def test_el_ritmo_usa_la_misma_constante_que_la_superficie():
+    """Si usara otra, el crecimiento publicado no cuadraría con el área
+    publicada y no habría forma de saber cuál de las dos miente."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+    hs = _hotspots(("f0", 1.0), ("f0", 2.0), ("f0", 3.0))
+
+    fila = contexto.anadir_ritmo(inc, hs, ahora=AHORA).iloc[0]
+
+    esperado = round(3 * contexto.AREA_POR_FOCO_HA / contexto.VENTANA_RITMO_H, 1)
+    assert fila["crecimiento_ha_h"] == esperado
+
+
+def test_un_incendio_sin_focos_recientes_publica_cero():
+    """Cero focos recientes es un dato, y la ficha lo matiza: puede estar
+    apagado, bajo nube, o sin pasada. Por eso se publican los dos números."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+    hs = _hotspots(("f0", 30.0))
+
+    fila = contexto.anadir_ritmo(inc, hs, ahora=AHORA).iloc[0]
+
+    assert fila["focos_recientes"] == 0
+    assert fila["crecimiento_ha_h"] == 0.0
+
+
+def test_el_ritmo_no_mezcla_focos_de_incendios_distintos():
+    inc = _incendios((40.0, -3.0), (41.0, -4.0))
+    inc["id"] = ["f0", "f1"]
+    hs = _hotspots(("f0", 1.0), ("f1", 1.0), ("f1", 2.0), ("f1", 3.0))
+
+    salida = contexto.anadir_ritmo(inc, hs, ahora=AHORA)
+
+    assert salida.set_index("id")["focos_recientes"].to_dict() == {"f0": 1, "f1": 3}
+
+
+def test_sin_hotspots_el_ritmo_queda_nulo_no_cero():
+    """Sin la capa no se ha podido mirar; cero afirmaría que no ha crecido."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+
+    fila = contexto.anadir_ritmo(inc, None).iloc[0]
+
+    assert pd.isna(fila["focos_recientes"])
+
+
+# --- Distancia al núcleo de población ---------------------------------------
+#
+# Es la única línea de la aplicación que responde literalmente a la pregunta con
+# la que se entra: ¿arde algo cerca de mi casa? Y por eso es también la más
+# sensible a una imprecisión.
+
+
+def _nucleos(*items: tuple[str, float, float, int]) -> gpd.GeoDataFrame:
+    """(nombre, lat, lon, habitantes)."""
+    return gpd.GeoDataFrame(
+        {"nombre": [i[0] for i in items], "habitantes": [i[3] for i in items]},
+        geometry=[Point(i[2], i[1]) for i in items],
+        crs=CRS_WGS84,
+    )
+
+
+def test_nombra_el_nucleo_habitado_mas_cercano():
+    inc = _incendios((40.000, -3.000))
+    n = _nucleos(("Cercano", 40.02, -3.00, 500), ("Lejano", 40.50, -3.00, 90000))
+
+    fila = contexto.anadir_distancia_poblacion(inc, n).iloc[0]
+
+    assert fila["nucleo_cercano"] == "Cercano"
+    assert 1.5 < fila["nucleo_cercano_km"] < 3.0
+    assert fila["nucleo_cercano_habitantes"] == 500
+
+
+def test_los_nucleos_deshabitados_no_cuentan():
+    """Cero habitantes son despoblados y polígonos industriales.
+
+    Decir que un incendio está a 800 m de un núcleo deshabitado alarma sin
+    motivo, y además desplaza al pueblo que sí importa.
+    """
+    inc = _incendios((40.000, -3.000))
+    n = _nucleos(("Despoblado", 40.005, -3.000, 0), ("Con gente", 40.05, -3.00, 800))
+
+    fila = contexto.anadir_distancia_poblacion(inc, n).iloc[0]
+
+    assert fila["nucleo_cercano"] == "Con gente"
+
+
+def test_en_despoblado_no_se_nombra_un_pueblo_a_58_km():
+    """Por encima del umbral no se nombra ninguno: ocuparía una línea de la
+    ficha para no informar de nada."""
+    inc = _incendios((40.0, -3.0))
+    n = _nucleos(("Muy lejos", 41.0, -3.0, 5000))  # ~111 km
+
+    fila = contexto.anadir_distancia_poblacion(inc, n).iloc[0]
+
+    assert pd.isna(fila["nucleo_cercano"])
+    assert pd.isna(fila["nucleo_cercano_km"])
+
+
+def test_sin_capa_de_nucleos_los_campos_quedan_nulos():
+    """El pipeline sigue sin la capa: es enriquecimiento, no un requisito."""
+    salida = contexto.anadir_distancia_poblacion(
+        _incendios((40.0, -3.0)),
+        gpd.GeoDataFrame({"nombre": [], "habitantes": []}, geometry=[], crs=CRS_WGS84),
+    )
+
+    assert pd.isna(salida.iloc[0]["nucleo_cercano"])
+
+
+def test_un_incendio_equidistante_no_se_duplica():
+    inc = _incendios((40.0, -3.0))
+    n = _nucleos(("Norte", 40.02, -3.0, 100), ("Sur", 39.98, -3.0, 100))
+
+    salida = contexto.anadir_distancia_poblacion(inc, n)
+
+    assert len(salida) == 1

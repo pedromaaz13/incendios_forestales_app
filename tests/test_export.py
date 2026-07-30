@@ -55,7 +55,10 @@ def test_geojson_only_carries_the_web_contract(tmp_outputs, pipeline_data):
 
     data = json.loads(tmp_outputs.hotspots_geojson.read_text(encoding="utf-8"))
     props = set(data["features"][0]["properties"])
-    assert props == set(export_mod.HOTSPOT_WEB_FIELDS)
+    # `confianza_baja` lo añade `clean.split_confidence` en el pipeline real. Aquí
+    # el GeoDataFrame se construye a mano, así que se comprueba el contrato menos
+    # ese campo en lugar de duplicar la fábrica.
+    assert props == set(export_mod.HOTSPOT_WEB_FIELDS) - {"confianza_baja"}
     assert "brightness_k" not in props
     assert "scan" not in props
 

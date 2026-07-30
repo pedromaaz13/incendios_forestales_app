@@ -35,6 +35,10 @@ HOTSPOT_WEB_FIELDS = [
     "fire_id",
     "daynight",
     "instrument",
+    # Marca explícita en vez de dejarlo implícito en `confidence_pct`. El
+    # frontend puede así avisar de qué son estos focos sin conocer los umbrales
+    # de cada sensor, que difieren entre VIIRS (categórico) y MODIS (0-100).
+    "confianza_baja",
 ]
 FIRE_WEB_FIELDS = [
     "fire_id",

@@ -1,31 +1,39 @@
-"""Contexto de cada incendio: viento, avisos oficiales y carreteras cortadas.
+"""Contexto de cada incendio: viento, avisos, cortes de carretera y ritmo.
 
 Todo lo de aquí **cruza capas que ya se publican**. No añade ninguna fuente ni
 ninguna petición: reordena datos que el pipeline ya tiene, para responder la
 pregunta que de verdad se hace quien abre el visor —*¿viene hacia mí?*— en vez
 de dejarla como deberes del usuario.
 
-Por qué en el pipeline y no en el frontend. Las tres capas de contexto se cargan
-en el navegador solo cuando enciendes su conmutador, así que calcular esto en el
-cliente daría una ficha que dice cosas distintas según qué botones hayas pulsado
-antes. Además aquí se puede probar.
+Por qué en el pipeline y no en el frontend. Las capas de contexto se cargan en el
+navegador solo cuando enciendes su conmutador, así que calcular esto en el cliente
+daría una ficha que dice cosas distintas según qué botones hayas pulsado antes.
+Además aquí se puede probar.
 
 **Nada de esto es una predicción.** Se publica el viento *observado* en la
-posición del incendio y el aviso que *AEMET* declara sobre esa zona. Combinarlos
-para afirmar hacia dónde va a avanzar el fuego sería una predicción nuestra, y
-este proyecto no tiene autoridad para hacerla ante alguien que está mirando si
-arde algo cerca de su casa.
+posición del incendio, el aviso que *AEMET* declara sobre esa zona y la superficie
+nueva *ya detectada* en las últimas horas. Combinarlos para afirmar hacia dónde va
+a avanzar el fuego sería una predicción nuestra, y este proyecto no tiene
+autoridad para hacerla ante alguien que está mirando si arde algo cerca de su
+casa.
+
+La distancia al núcleo de población más cercano sí está, y es la respuesta
+literal a esa pregunta. **No se calcula con los polígonos municipales**: usar su
+centroide como "el pueblo" daría un error típico de 3,3 km y de hasta 23,6 km en
+el municipio más grande. Se usa la colección `nuc` del IGN —37.497 núcleos con
+sus coordenadas y su población— que prepara `scripts/preparar_nucleos.py`.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from .config import CRS_METRIC_CANARIAS, CRS_METRIC_MAINLAND
+from .config import CONFIG, CRS_METRIC_CANARIAS, CRS_METRIC_MAINLAND
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +54,18 @@ MAX_DISTANCIA_VIENTO_KM = 120.0
 # "cerca", y la causa solo se declara cuando la DGT la declara.
 RADIO_CORTES_KM = 15.0
 
+# Ventana para medir el ritmo. 6 h es aproximadamente el hueco entre pasadas de
+# VIIRS: más corto y la mayoría de incendios no tendrían dos observaciones que
+# comparar; más largo y un incendio que se reactivó hace una hora se diluiría en
+# el promedio.
+VENTANA_RITMO_H = 6.0
+
+# Superficie que cubre un hotspot, la misma constante que usa `cluster.py` para
+# `area_est_ha`. Se comparte a propósito: si el ritmo usara otra, el crecimiento
+# publicado no cuadraría con la superficie publicada y no habría forma de saber
+# cuál de las dos mentía.
+AREA_POR_FOCO_HA = 14.06
+
 CAMPOS_CONTEXTO = [
     "viento_kmh",
     "viento_rachas_kmh",
@@ -59,6 +79,11 @@ CAMPOS_CONTEXTO = [
     "aviso_titular",
     "cortes_cerca",
     "cortes_cerca_por_incendio",
+    "focos_recientes",
+    "crecimiento_ha_h",
+    "nucleo_cercano",
+    "nucleo_cercano_km",
+    "nucleo_cercano_habitantes",
 ]
 
 
@@ -258,8 +283,145 @@ def enriquecer(
     viento: gpd.GeoDataFrame | None = None,
     avisos: gpd.GeoDataFrame | None = None,
     cortes: gpd.GeoDataFrame | None = None,
+    hotspots: gpd.GeoDataFrame | None = None,
+    ahora: pd.Timestamp | None = None,
+    nucleos: gpd.GeoDataFrame | None = None,
 ) -> gpd.GeoDataFrame:
-    """Aplica los tres cruces. Cada uno es independiente de los otros dos."""
+    """Aplica los cinco cruces. Cada uno es independiente de los demás."""
     salida = anadir_viento(incidents, viento)
     salida = anadir_avisos(salida, avisos)
-    return anadir_cortes(salida, cortes)
+    salida = anadir_cortes(salida, cortes)
+    salida = anadir_ritmo(salida, hotspots, ahora)
+    return anadir_distancia_poblacion(salida, nucleos)
+
+
+def anadir_ritmo(
+    incidents: gpd.GeoDataFrame,
+    hotspots: gpd.GeoDataFrame | None,
+    ahora: pd.Timestamp | None = None,
+) -> gpd.GeoDataFrame:
+    """Ritmo de crecimiento **observado**, no previsto.
+
+    Es la diferencia entre un incendio que avanza y uno que se está apagando, y
+    hoy la aplicación no la dice: dos incendios de 28 ha se ven idénticos aunque
+    uno lleve creciendo seis horas y el otro no se haya movido.
+
+    Se mide contando focos nuevos en las últimas `VENTANA_RITMO_H` horas y
+    convirtiéndolos a superficie con la **misma** constante que `cluster.py` usa
+    para `area_est_ha`. Compartir la constante no es un detalle: con dos
+    distintas, el crecimiento publicado no cuadraría con la superficie publicada
+    y no habría manera de saber cuál de las dos miente.
+
+    Lo que este número **no** es: una predicción. Dice cuánta superficie nueva se
+    ha detectado en las últimas horas. No dice cuánta se detectará en las
+    próximas, y la ficha no lo insinúa.
+
+    Cuidado con leerlo como cero: un incendio sin focos recientes puede estar
+    apagado, bajo nube, o simplemente no haber tenido pasada. Por eso se publican
+    los dos números —focos recientes y ritmo— y no solo el segundo.
+    """
+    salida = _vacio(incidents)
+    if hotspots is None or hotspots.empty or salida.empty:
+        return salida
+    if "fire_id" not in hotspots.columns or "acq_dt" not in hotspots.columns:
+        return salida
+
+    ahora = ahora or pd.Timestamp.now(tz="UTC")
+    visto = pd.to_datetime(hotspots["acq_dt"], errors="coerce", utc=True)
+    recientes = hotspots[visto >= ahora - pd.Timedelta(hours=VENTANA_RITMO_H)]
+
+    cuenta = recientes.groupby("fire_id").size()
+    focos = cuenta.reindex(salida["id"]).fillna(0).astype(int)
+
+    salida["focos_recientes"] = focos.to_numpy()
+    salida["crecimiento_ha_h"] = (
+        focos.to_numpy() * AREA_POR_FOCO_HA / VENTANA_RITMO_H
+    ).round(1)
+
+    creciendo = int((salida["focos_recientes"] > 0).sum())
+    log.info(
+        "Contexto: %d/%d incendios con focos en las últimas %.0f h",
+        creciendo, len(salida), VENTANA_RITMO_H,
+    )
+    return salida
+
+
+# Capa de núcleos de población. La prepara `scripts/preparar_nucleos.py` desde la
+# OGC API del IGN y se cachea, porque son 37.497 registros y el cron corre cada
+# 30 minutos.
+NUCLEOS_PATH = CONFIG / "nucleos.geojson"
+
+# Más allá de esto no se nombra un núcleo. Un incendio a 60 km del pueblo más
+# cercano está en despoblado, y decir "a 58 km de Cuenca" no informa de nada:
+# ocupa una línea de la ficha para no decir nada útil.
+MAX_DISTANCIA_NUCLEO_KM = 50.0
+
+
+def _cargar_nucleos(path: Path = NUCLEOS_PATH) -> gpd.GeoDataFrame | None:
+    if not path.exists():
+        log.warning("Sin capa de núcleos en %s; se omite la distancia a población", path)
+        return None
+    return gpd.read_file(path)
+
+
+def anadir_distancia_poblacion(
+    incidents: gpd.GeoDataFrame, nucleos: gpd.GeoDataFrame | None = None
+) -> gpd.GeoDataFrame:
+    """Distancia al núcleo de población habitado más cercano.
+
+    Es la única línea de toda la aplicación que responde literalmente a la
+    pregunta con la que la gente la abre: *¿arde algo cerca de mi casa?*
+
+    Se mide contra los **núcleos** del IGN, no contra el centroide del municipio.
+    La diferencia no es cosmética: el centroide de un término municipal está a
+    3,3 km del pueblo de media y hasta a 23,6 km en el municipio más grande de
+    España, así que un número calculado así sería falsa precisión sobre el dato
+    más sensible que publica este visor.
+
+    Solo se consideran núcleos **habitados**. Los de cero habitantes son
+    despoblados y polígonos industriales: decir que un incendio está a 800 m de
+    un núcleo deshabitado alarma sin motivo.
+
+    Por encima de `MAX_DISTANCIA_NUCLEO_KM` no se nombra ninguno: un incendio en
+    despoblado se describe mejor por su ausencia de vecinos que por un pueblo que
+    está a 58 km.
+    """
+    salida = _vacio(incidents)
+    if salida.empty:
+        return salida
+
+    nucleos = nucleos if nucleos is not None else _cargar_nucleos()
+    if nucleos is None or nucleos.empty:
+        return salida
+
+    habitados = nucleos[pd.to_numeric(nucleos.get("habitantes"), errors="coerce").fillna(0) > 0]
+    if habitados.empty:
+        log.warning("La capa de núcleos no trae ninguno habitado; se omite")
+        return salida
+
+    crs = _crs_metrico(float(salida.geometry.x.mean()))
+    inc_m = salida[["geometry"]].to_crs(crs)
+    nuc_m = habitados[["nombre", "habitantes", "geometry"]].to_crs(crs)
+
+    cercano = gpd.sjoin_nearest(inc_m, nuc_m, how="left", distance_col="_d")
+    # Un incendio equidistante de dos núcleos aparece dos veces: gana el primero,
+    # que a igual distancia es indiferente.
+    cercano = cercano[~cercano.index.duplicated(keep="first")]
+
+    km = (cercano["_d"] / 1000.0).round(1)
+    lejos = km > MAX_DISTANCIA_NUCLEO_KM
+
+    salida["nucleo_cercano"] = cercano["nombre"].where(~lejos).reindex(salida.index)
+    salida["nucleo_cercano_km"] = km.where(~lejos).reindex(salida.index)
+    salida["nucleo_cercano_habitantes"] = (
+        cercano["habitantes"].where(~lejos).reindex(salida.index)
+    )
+
+    con_nucleo = int(salida["nucleo_cercano"].notna().sum())
+    if con_nucleo:
+        mediana = float(salida["nucleo_cercano_km"].median())
+        log.info(
+            "Contexto: %d/%d incendios con núcleo a menos de %.0f km (mediana %.1f km)",
+            con_nucleo, len(salida), MAX_DISTANCIA_NUCLEO_KM, mediana,
+        )
+    return salida

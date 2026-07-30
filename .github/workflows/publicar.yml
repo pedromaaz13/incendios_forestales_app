@@ -75,6 +75,24 @@ jobs:
           PYTHONPATH: src
         run: python scripts/preparar_municipios.py --candidatas
 
+      # 37.497 núcleos de población, 6 MB. Se cachea por lo mismo que la capa
+      # municipal: son ~38 peticiones a la API del IGN y el cron corre cada 30
+      # minutos. Sin ella el pipeline funciona; solo deja de decir a qué
+      # distancia está el pueblo más cercano.
+      - name: Restaurar núcleos de población
+        id: cache_nucleos
+        uses: actions/cache@v4
+        with:
+          path: config/nucleos.geojson
+          key: nucleos-ign-v1
+
+      - name: Preparar núcleos de población
+        if: steps.cache_nucleos.outputs.cache-hit != 'true'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: python scripts/preparar_nucleos.py
+
       - name: Estado de la capa municipal
         if: always()
         run: |
