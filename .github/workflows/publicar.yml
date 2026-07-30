@@ -109,6 +109,19 @@ jobs:
           AEMET_API_KEY: ${{ secrets.AEMET_API_KEY }}
           PYTHONPATH: src
         run: |
+          # `pipefail` no es opcional aquí. Los dos `if` de abajo canalizan
+          # Python a `tee`, y sin esta línea bash evalúa el código de salida de
+          # `tee` —siempre 0— en lugar del de Python. Consecuencia real, vista
+          # el 30-07-2026: el pipeline abortó por un corte de red del runner, el
+          # `if` lo leyó como éxito, la copia falló al no haber salidas y el
+          # respaldo a datos de demostración nunca llegó a ejecutarse.
+          #
+          # Y el modo de fallo peor no es ese: si `data/out/` tuviera ficheros
+          # de una ejecución anterior, se habrían copiado y publicado como
+          # frescos. Un pipeline que aborta leído como éxito es exactamente el
+          # fallo silencioso que este proyecto existe para no cometer.
+          set -o pipefail
+
           # Caer a la demo sin decir por qué convierte un problema de
           # configuración en un misterio. Cada rama deja su motivo en el
           # resumen del job.
@@ -142,11 +155,22 @@ jobs:
             cp data/out/*.geojson data/out/*.json web/public/live/
             echo "modo=real" >> "$GITHUB_OUTPUT"
           else
-            echo "::error::El pipeline abortó. Últimas líneas:"
+            # Aquí NO se cae a la demo. La demo es para el arranque en frío
+            # —repositorio recién clonado, sin clave— no para un fallo de
+            # ejecución. Sustituir incendios reales por incendios inventados
+            # porque la red del runner falló un minuto es peor que no publicar:
+            # el visor pasaría a enseñar fuegos que no existen.
+            #
+            # Al salir con código distinto de cero, los pasos de compilación y
+            # despliegue se saltan solos y la publicación anterior sigue en pie
+            # con su antigüedad real, que crecerá a la vista. Esa es la
+            # respuesta honesta, y el job en rojo es la alerta.
+            echo "::error::El pipeline abortó. No se publica nada; queda la"
+            echo "::error::ejecución anterior con su antigüedad real."
             tail -30 /tmp/pipeline.txt
             echo "motivo=El pipeline abortó: $(tail -3 /tmp/pipeline.txt | head -c 200)" >> "$GITHUB_OUTPUT"
-            python scripts/build_demo_data.py
-            echo "modo=demo" >> "$GITHUB_OUTPUT"
+            echo "modo=abortado" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
       # Comprueba que lo que se va a publicar cuadra con lo que trajo la fuente:
