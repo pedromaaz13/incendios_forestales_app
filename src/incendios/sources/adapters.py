@@ -175,10 +175,11 @@ JCYL = JsonApiSource(
         source_id="jcyl",
         name="Junta de Castilla y León",
         region="Castilla y León",
-        # Esquema capturado el 30-07-2026 con DevTools sobre INFORCYL; el
-        # fixture está en `tests/fixtures/jcyl.json` y el parseo en `jcyl.py`.
-        # Falta la URL exacta del endpoint `emergencias` de servicios.jcyl.es.
-        url="",  # TODO: la ruta completa, y comprobar si exige token
+        # Descubierta con DevTools sobre INFORCYL el 30-07-2026. Es pública:
+        # comprobado que responde 200 sin cookie de sesión ni `Referer`, solo
+        # con un User-Agent identificable. El fixture de regresión está en
+        # `tests/fixtures/jcyl.json` y el parseo en `jcyl.py`.
+        url="https://servicios.jcyl.es/incyl/json/emergencias",
         # Provisional hasta medirlo. La coordenada capturada cae a ~6 km del
         # casco urbano, o sea que es la del incendio y no el centroide del
         # municipio — buena señal, pero un punto no es una medición.

@@ -50,6 +50,10 @@ BBOX = (-7.2, 40.0, -1.5, 43.5)
 # —"Nivel 2", "Sofocado"— no se traduzca solo a algo plausible y equivocado.
 ESTADOS = {
     "activo": "activo",
+    # Aparece como valor de `estado` además del booleano `falsa_alarma`. Estos
+    # registros se descartan antes de llegar aquí, pero reconocerlo evita que un
+    # cambio en el booleano los cuele como "desconocido".
+    "falsa alarma": "falsa_alarma",
     "estabilizado": "estabilizado",
     "controlado": "controlado",
     "extinguido": "extinguido",
@@ -116,6 +120,57 @@ def _medios(fila: dict) -> str:
     )
 
 
+# La fuente publica las provincias en mayúsculas y **sin tildes**: «AVILA»,
+# «LEON». Son nueve y es un vocabulario cerrado, así que se corrigen a mano en
+# vez de intentar restituir tildes por reglas, que en topónimos no funciona.
+#
+# Los municipios se quedan como vengan: son más de 2.000 y no hay forma
+# fiable de saber si «Peñaranda» lleva tilde sin una tabla que no tenemos.
+PROVINCIAS = {
+    "avila": "Ávila",
+    "leon": "León",
+    "burgos": "Burgos",
+    "palencia": "Palencia",
+    "salamanca": "Salamanca",
+    "segovia": "Segovia",
+    "soria": "Soria",
+    "valladolid": "Valladolid",
+    "zamora": "Zamora",
+}
+
+# Partículas que van en minúscula dentro de un topónimo castellano.
+_MENORES = {"de", "del", "la", "las", "el", "los", "y", "e", "a", "al"}
+
+
+def _nombre_propio(valor: str | None) -> str | None:
+    """`CUEVAS DE SAN CLEMENTE` → `Cuevas de San Clemente`.
+
+    `str.title()` a secas dejaría «Cuevas De San Clemente» y
+    «Villaverde-Mogina» perdería la mayúscula tras el guion, porque `title()`
+    solo mira los espacios.
+    """
+    if not valor:
+        return None
+
+    def capitaliza(palabra: str, primera: bool) -> str:
+        if not primera and palabra in _MENORES:
+            return palabra
+        # Los guiones separan nombre propio: «Villaverde-Mogina», no «-mogina».
+        return "-".join(t.capitalize() for t in palabra.split("-"))
+
+    palabras = valor.strip().lower().split()
+    return " ".join(
+        capitaliza(p, i == 0) for i, p in enumerate(palabras)
+    ) or None
+
+
+def _provincia(valor: str | None) -> str | None:
+    """Nombre de provincia con su tilde, desde el vocabulario cerrado."""
+    if not valor:
+        return None
+    return PROVINCIAS.get(valor.strip().lower(), _nombre_propio(valor))
+
+
 def _fecha(valor: str | None) -> pd.Timestamp | None:
     """`22/07/2026 13:02:00` → UTC.
 
@@ -162,9 +217,18 @@ def extraer(bruto: dict) -> list[dict]:
             continue
 
         lat, lon = punto
-        localidad = emergencia.get("localidad") or {}
-        municipio = (localidad.get("municipio") or {}).get("nombre")
         estado_bruto = (emergencia.get("estado") or {}).get("NOMBRE") or ""
+
+        # `municipio` y `provincia` están al primer nivel; `localidad` repite el
+        # municipio y añade la entidad menor. Se prefiere el primero y el
+        # segundo queda de reserva por si algún registro solo trae uno.
+        localidad = emergencia.get("localidad") or {}
+        municipio = (
+            (emergencia.get("municipio") or {}).get("nombre")
+            or (localidad.get("municipio") or {}).get("nombre")
+            or localidad.get("nombre")
+        )
+        provincia = (emergencia.get("provincia") or {}).get("nombre")
 
         filas.append({
             "external_id": _identificador(emergencia),
@@ -173,9 +237,14 @@ def extraer(bruto: dict) -> list[dict]:
             "reported_at": _fecha(emergencia.get("fecha_inicio")),
             "status": ESTADOS.get(estado_bruto.strip().lower(), "desconocido"),
             "raw_status": estado_bruto,
-            "municipio": (municipio or localidad.get("nombre") or "").title() or None,
-            "provincia": None,   # la fuente da la sigla (`cpm`), no el nombre
-            "level": emergencia.get("nivel"),
+            # La fuente escribe en mayúsculas: «BURGOHONDO» gritado en la ficha
+            # de un incendio queda agresivo y además desentona con el resto.
+            "municipio": _nombre_propio(municipio),
+            "provincia": _provincia(provincia),
+            # `nivel_infocal` es la situación operativa 0-2 del plan INFOCAL, que
+            # es lo que la interfaz de la Junta enseña como «IGR». `nivelIgr` es
+            # un booleano aparte que solo dice si le aplica la escala.
+            "level": emergencia.get("nivel_infocal"),
             "resources": _medios(emergencia),
         })
 

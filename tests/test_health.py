@@ -221,12 +221,21 @@ def test_write_is_under_the_size_budget(tmp_path):
 
 
 def test_unconfigured_registry_sources_are_disabled_not_broken():
-    """Las cinco autonómicas siguen sin endpoint: `disabled`, no `error`."""
+    """Una fuente sin endpoint es `disabled`, no `error`.
+
+    La distinción importa en el panel: `error` dice «esto se ha roto» y
+    `disabled` dice «esto todavía no está conectado». Pintar de rojo lo segundo
+    haría que nadie mirase el rojo del primero.
+
+    JCyL ya tiene endpoint desde el 30-07-2026, así que este test mira solo las
+    que siguen sin él.
+    """
     from incendios.sources.adapters import REGISTRY
 
-    estados = health.from_official_sources(REGISTRY, results={}, now=NOW)
+    sin_url = [s for s in REGISTRY if not s.meta.url]
+    estados = health.from_official_sources(sin_url, results={}, now=NOW)
 
-    assert {s.id for s in estados} == {"jcyl", "infocam", "112cv", "bombers", "infoca"}
+    assert {s.id for s in estados} == {"infocam", "112cv", "bombers", "infoca"}
     assert all(s.status(NOW) == STATUS_DISABLED for s in estados)
     assert all(s.records == 0 for s in estados)
 

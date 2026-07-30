@@ -23,7 +23,19 @@ FIXTURE = Path(__file__).parent / "fixtures" / "jcyl.json"
 
 @pytest.fixture
 def payload() -> dict:
+    """Las tres emergencias reales del fixture: un IGR 2 activo, un controlado
+    y una falsa alarma."""
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def uno(payload) -> dict:
+    """Solo el incendio de Burgohondo, para las pruebas que lo corrompen.
+
+    Con las tres, mutar la primera y comprobar que la salida está vacía no
+    probaría nada: las otras dos seguirían saliendo.
+    """
+    return {"listaEmergencias": [payload["listaEmergencias"][0]]}
 
 
 # --- Coordenadas: la trampa del esquema -------------------------------------
@@ -55,27 +67,27 @@ def test_la_coordenada_es_la_del_incendio_y_no_la_del_pueblo(payload):
     assert fila["longitude"] == pytest.approx(-4.738, abs=0.01)
 
 
-def test_un_huso_desconocido_descarta_el_registro_sin_lanzar(payload):
-    payload["listaEmergencias"][0]["huso"] = 99
+def test_un_huso_desconocido_descarta_el_registro_sin_lanzar(uno):
+    uno["listaEmergencias"][0]["huso"] = 99
 
-    assert jcyl.extraer(payload) == []
+    assert jcyl.extraer(uno) == []
 
 
-def test_un_cambio_de_sistema_de_coordenadas_se_detecta(payload):
+def test_un_cambio_de_sistema_de_coordenadas_se_detecta(uno):
     """Si la Junta empezara a publicar en grados, la transformación **no falla**:
     devuelve un punto válido en mitad del Atlántico. El recuadro lo caza."""
-    payload["listaEmergencias"][0]["latitud"] = 40.41
-    payload["listaEmergencias"][0]["longitud"] = -4.78
+    uno["listaEmergencias"][0]["latitud"] = 40.41
+    uno["listaEmergencias"][0]["longitud"] = -4.78
 
-    assert jcyl.extraer(payload) == []
+    assert jcyl.extraer(uno) == []
 
 
-def test_coordenadas_invertidas_se_detectan(payload):
+def test_coordenadas_invertidas_se_detectan(uno):
     """Intercambiar northing y easting da un punto fuera de la comunidad."""
-    fila = payload["listaEmergencias"][0]
+    fila = uno["listaEmergencias"][0]
     fila["latitud"], fila["longitud"] = fila["longitud"], fila["latitud"]
 
-    assert jcyl.extraer(payload) == []
+    assert jcyl.extraer(uno) == []
 
 
 # --- Campos del contrato ----------------------------------------------------
@@ -139,12 +151,13 @@ def test_un_estado_nuevo_no_se_traduce_a_algo_plausible(payload):
 def test_solo_se_cuentan_los_medios_que_estan_actuando(payload):
     """El listado trae también los que NO actúan: medios del dispositivo que no
     están en este incendio. Contarlos todos multiplicaría la cifra."""
+    emergencia = payload["listaEmergencias"][0]
+    actuando = sum(1 for m in emergencia["medios"] if m["ACTUANDO"])
+    assert actuando < len(emergencia["medios"]), "el fixture debe tener de los dos tipos"
+
     resumen = jcyl.extraer(payload)[0]["resources"]
 
-    assert "autobombas" in resumen
-    assert "bulldozer" in resumen
-    # El fixture tiene 5 medios y solo 4 con ACTUANDO=true.
-    assert sum(int(t.split()[0]) for t in resumen.split(" · ")) == 4
+    assert sum(int(t.split()[0]) for t in resumen.split(" · ")) == actuando
 
 
 def test_sin_medios_actuando_el_resumen_queda_vacio(payload):
@@ -163,12 +176,12 @@ def test_un_registro_sin_medios_no_lanza(payload):
 # --- Filtros ----------------------------------------------------------------
 
 
-def test_las_falsas_alarmas_no_se_publican(payload):
+def test_las_falsas_alarmas_no_se_publican(uno):
     """La propia Junta las marca como tales: publicarlas sería contradecir a la
     fuente y alarmar por un incendio que no existe."""
-    payload["listaEmergencias"][0]["falsa_alarma"] = True
+    uno["listaEmergencias"][0]["falsa_alarma"] = True
 
-    assert jcyl.extraer(payload) == []
+    assert jcyl.extraer(uno) == []
 
 
 def test_una_respuesta_vacia_devuelve_lista_vacia():
@@ -179,3 +192,58 @@ def test_una_respuesta_sin_la_clave_esperada_no_lanza():
     """Si la Junta renombra `listaEmergencias`, el adaptador devuelve vacío y la
     fuente se marca sin datos, en vez de reventar el pipeline entero."""
     assert jcyl.extraer({"otraCosa": [{"foo": 1}]}) == []
+
+
+# --- Lo que aporta la fuente que no teníamos --------------------------------
+
+
+def test_publica_el_nivel_operativo_del_plan_infocal(payload):
+    """`nivel_infocal` 0-2 es lo que la Junta enseña como «IGR» en su visor.
+
+    No confundir con `nivelIgr`, que es un booleano y solo dice si la escala le
+    aplica: usar ese daría `True`/`False` donde el contrato espera un número.
+    """
+    por_id = {f["external_id"]: f for f in jcyl.extraer(payload)}
+
+    assert por_id["5-152-26"]["level"] == 2, "Burgohondo es un IGR 2"
+    assert por_id["9-304-26"]["level"] == 0
+
+
+def test_publica_municipio_y_provincia_en_nombre_propio(payload):
+    """La fuente escribe en mayúsculas y `.title()` dejaría «Cuevas De San
+    Clemente»: en castellano las preposiciones van en minúscula."""
+    por_id = {f["external_id"]: f for f in jcyl.extraer(payload)}
+
+    assert por_id["9-304-26"]["municipio"] == "Cuevas de San Clemente"
+    assert por_id["9-304-26"]["provincia"] == "Burgos"
+
+
+def test_las_tres_emergencias_reales_dan_dos_publicables(payload):
+    """La tercera es una falsa alarma declarada por la Junta."""
+    filas = jcyl.extraer(payload)
+
+    assert len(filas) == 2
+    assert {f["status"] for f in filas} == {"activo", "controlado"}
+
+
+def test_las_provincias_recuperan_su_tilde(payload):
+    """La fuente publica «AVILA» y «LEON» sin tilde.
+
+    Son nueve y es un vocabulario cerrado, así que se corrigen con una tabla.
+    Los municipios no: son más de 2.000 y restituir tildes por reglas no
+    funciona en topónimos.
+    """
+    assert jcyl._provincia("AVILA") == "Ávila"
+    assert jcyl._provincia("LEON") == "León"
+    assert jcyl._provincia("BURGOS") == "Burgos"
+
+
+def test_una_provincia_desconocida_no_se_pierde():
+    """Si la Junta publicara una provincia fuera de la tabla, se formatea igual
+    en vez de devolver nulo: perder el dato sería peor que perder la tilde."""
+    assert jcyl._provincia("CACERES") == "Caceres"
+
+
+def test_el_guion_tambien_separa_nombre_propio():
+    """`str.title()` solo mira los espacios y dejaría «Villaverde-mogina»."""
+    assert jcyl._nombre_propio("VILLAVERDE-MOGINA") == "Villaverde-Mogina"
