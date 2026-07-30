@@ -16,6 +16,8 @@ import { cargarGeoJson, cargarIncidentes, cargarManifiesto, cargarSalud } from '
 import {
   CAPA_AIRE,
   CAPA_GRUPOS,
+  CAPA_AVISOS,
+  CAPA_AVISOS_BORDE,
   CAPA_TRAFICO,
   CAPA_TRAFICO_INCENDIO,
   CAPA_HOTSPOTS,
@@ -29,12 +31,14 @@ import {
   FUENTE_INCIDENTES,
   FUENTE_PERIMETROS,
   FUENTE_AIRE,
+  FUENTE_AVISOS,
   FUENTE_TRAFICO,
   FUENTE_VIENTO,
   anadirCapaAire,
   anadirCapasGrupos,
   hacerRuidososLosErrores,
   registrarCifrasDeGrupo,
+  anadirCapasAvisos,
   anadirCapasTrafico,
   anadirCapaHotspots,
   anadirCapaViento,
@@ -89,7 +93,10 @@ const estado: Estado = {
   salud: null,
   incidentes: null,
   seleccionado: null,
-  capas: { hotspots: true, perimetros: false, viento: false, aire: false, trafico: false },
+  capas: {
+    hotspots: true, perimetros: false, viento: false,
+    aire: false, trafico: false, avisos: false,
+  },
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
   dias: [],
   diaElegido: null,
@@ -346,6 +353,7 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     viento: () => mapa.getLayer(CAPA_VIENTO_ANIMADO),
     aire: () => mapa.getSource(FUENTE_AIRE),
     trafico: () => mapa.getSource(FUENTE_TRAFICO),
+    avisos: () => mapa.getSource(FUENTE_AVISOS),
   }[capa];
   if (ya?.()) return;
 
@@ -411,6 +419,13 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     mapa.addSource(FUENTE_TRAFICO, { type: 'geojson', data: datos });
     anadirCapasTrafico(mapa);
   }
+
+  if (capa === 'avisos') {
+    const datos = await cargarGeoJson('avisos.geojson');
+    if (!datos) return;
+    mapa.addSource(FUENTE_AVISOS, { type: 'geojson', data: datos });
+    anadirCapasAvisos(mapa);
+  }
 }
 
 function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
@@ -422,6 +437,7 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     viento: [CAPA_VIENTO, CAPA_VIENTO_ANIMADO],
     aire: [CAPA_AIRE],
     trafico: [CAPA_TRAFICO, CAPA_TRAFICO_INCENDIO],
+    avisos: [CAPA_AVISOS, CAPA_AVISOS_BORDE],
   };
 
   const aplicar = () => {
@@ -676,6 +692,7 @@ function construirConmutadores(mapa: MapaGL): void {
     ['viento', 'Viento'],
     ['aire', 'Calidad del aire'],
     ['trafico', 'Carreteras cortadas'],
+    ['avisos', 'Avisos de AEMET'],
   ];
 
   nodo.innerHTML = capas

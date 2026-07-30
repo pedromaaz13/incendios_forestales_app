@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 import geopandas as gpd
 import pandas as pd
 
+from . import aemet as aemet_mod
 from . import aire as aire_mod
 from . import build as build_mod
 from . import clean as clean_mod
@@ -66,6 +67,7 @@ def run(
     *,
     con_viento: bool = True,
     con_aire: bool = True,
+    con_avisos: bool = True,
     con_trafico: bool = True,
     outputs=None,
 ) -> dict:
@@ -161,10 +163,12 @@ def run(
     viento = wind_mod.fetch() if con_viento else None
     calidad_aire = aire_mod.fetch() if con_aire else None
     cortes = trafico_mod.fetch() if con_trafico else None
+    avisos = aemet_mod.fetch() if con_avisos else None
 
     publish_mod.publish_atomically([
         ("capas de datos", lambda: _escribir_datos(
-            hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes, outputs
+            hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes,
+            avisos, outputs,
         )),
         ("sources.json", lambda: informe.write(outputs.sources_json)),
         ("manifest.json", lambda: build_mod.write_manifest(manifest, outputs.manifest)),
@@ -234,7 +238,8 @@ def _informe_de_salud(
 
 
 def _escribir_datos(
-    hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes, outputs
+    hotspots, fires, incidents, perimeters, viento, calidad_aire, cortes,
+    avisos, outputs,
 ) -> None:
     """Todas las capas menos `sources.json` y `manifest.json`.
 
@@ -261,6 +266,10 @@ def _escribir_datos(
     if cortes is not None and len(cortes):
         export_mod._write_geojson(
             cortes, outputs.trafico_geojson, trafico_mod.TRAFICO_SCHEMA
+        )
+    if avisos is not None and len(avisos):
+        export_mod._write_geojson(
+            avisos, outputs.avisos_geojson, aemet_mod.AVISOS_SCHEMA
         )
 
     export_mod.write_pmtiles(outputs.hotspots_geojson, outputs.hotspots_pmtiles, layer="hotspots")
@@ -292,6 +301,9 @@ def main() -> None:
     parser.add_argument(
         "--sin-trafico", action="store_true", help="omitir los cortes de la DGT"
     )
+    parser.add_argument(
+        "--sin-avisos", action="store_true", help="omitir los avisos de AEMET"
+    )
     args = parser.parse_args()
 
     setup_logging(args.verbose)
@@ -300,6 +312,7 @@ def main() -> None:
         con_viento=not args.sin_viento,
         con_aire=not args.sin_aire,
         con_trafico=not args.sin_trafico,
+        con_avisos=not args.sin_avisos,
     )
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
 

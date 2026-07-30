@@ -288,12 +288,17 @@ def _describir_carga(bruto: bytes, tipo: str) -> None:
     import io
     import tarfile
 
-    # TAR.GZ: los avisos CAP vienen empaquetados, uno por zona.
-    if bruto[:2] == b"\x1f\x8b":
+    # TAR, comprimido o no. Los avisos CAP vienen empaquetados, uno por zona y
+    # nivel. AEMET los sirve como `application/x-gtar` sin gzip, así que mirar
+    # solo la firma de gzip los dejaba caer en la rama de "texto plano" y salía
+    # el volcado binario del tar en vez del esquema.
+    es_tar = bruto[257:262] == b"ustar"
+    if bruto[:2] == b"\x1f\x8b" or es_tar:
         try:
-            with tarfile.open(fileobj=io.BytesIO(gzip.decompress(bruto))) as t:
+            crudo = bruto if es_tar else gzip.decompress(bruto)
+            with tarfile.open(fileobj=io.BytesIO(crudo)) as t:
                 nombres = t.getnames()
-                print(f"      TAR.GZ con {len(nombres)} ficheros")
+                print(f"      TAR con {len(nombres)} ficheros")
                 for n in nombres[:5]:
                     print(f"        · {n}")
                 primero = next((m for m in t.getmembers() if m.isfile()), None)
@@ -302,7 +307,7 @@ def _describir_carga(bruto: bytes, tipo: str) -> None:
                     if dentro:
                         _describir_carga(dentro.read(), "application/xml")
         except Exception as exc:
-            print(f"      GZIP ilegible: {exc}")
+            print(f"      TAR ilegible: {exc}")
         return
 
     if bruto[:8] == b"\x89PNG\r\n\x1a\n":
@@ -332,7 +337,7 @@ def _describir_carga(bruto: bytes, tipo: str) -> None:
         print(f"      XML · {len(cuenta)} etiquetas distintas")
         for nombre, n in cuenta.most_common(30):
             print(f"        {n:>5}  {nombre}")
-        print(f"      cabecera:\n{texto[:2000]}")
+        print(f"      documento completo:\n{texto[:9000]}")
         return
 
     print(f"      texto plano:\n{texto[:1500]}")

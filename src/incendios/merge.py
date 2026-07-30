@@ -42,8 +42,36 @@ MATCH_MAX_M = 15000.0
 # emparejarse con una detección satelital de esta mañana en el mismo valle.
 MATCH_WINDOW_HOURS = 48.0
 
-# Medio píxel VIIRS de 375 m: la incertidumbre real de una posición FIRMS.
+# Incertidumbre de la posición según el sensor que detectó el incendio.
+#
+# FIRMS no da un punto: da el centro del píxel donde saltó la anomalía térmica,
+# y el incendio puede estar en cualquier parte de ese píxel. VIIRS son 375 m de
+# lado y MODIS 1 km, casi el triple, así que publicar 375 m para un incendio que
+# solo vio MODIS dibuja un anillo de incertidumbre menor que el real. Eso es
+# fingir precisión sobre el dato que la interfaz usa para decir "puede estar en
+# cualquier punto de este círculo".
 VIIRS_PIXEL_PRECISION_M = 375.0
+MODIS_PIXEL_PRECISION_M = 1000.0
+
+
+def _precision_por_sensor(sensores: pd.Series | None) -> pd.Series | float:
+    """Incertidumbre de posición según el sensor que vio el incendio.
+
+    `sensors` llega como texto separado por comas porque un mismo incendio puede
+    haber sido detectado por varios satélites. Basta con que uno sea VIIRS para
+    que la posición se conozca con 375 m: se toma el mejor, no el peor ni la
+    media, porque la detección más fina es la que acota de verdad dónde está.
+
+    Sin la columna se devuelve el valor de VIIRS, que es el caso mayoritario y
+    el comportamiento que había antes de distinguir por sensor.
+    """
+    if sensores is None:
+        return float(VIIRS_PIXEL_PRECISION_M)
+
+    tiene_viirs = sensores.fillna("").str.upper().str.contains("VIIRS")
+    return np.where(
+        tiene_viirs, VIIRS_PIXEL_PRECISION_M, MODIS_PIXEL_PRECISION_M
+    ).astype(float)
 
 # Contrato de la sección 4.3. El frontend lee estos nombres; cambiarlos rompe el
 # visor en silencio, así que viven aquí y no repartidos por el código.
@@ -236,10 +264,11 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
         fires["official_status"],
         np.where(inactivo, "_sin_detecciones_recientes", "activo"),
     )
-    # La posición del cluster viene de FIRMS: un píxel VIIRS de 375 m, así que
-    # el radio de incertidumbre es medio píxel. Es la mitad del producto (RF-F-03):
-    # dibujar un punto donde solo hay un área es fingir precisión.
-    fires["position_precision_m"] = float(VIIRS_PIXEL_PRECISION_M)
+    # La precisión sale del **mejor** sensor que vio el incendio, no de una
+    # constante: VIIRS acota a 375 m y MODIS a 1 km. Es la mitad del producto
+    # (RF-F-03): dibujar un punto donde solo hay un área es fingir precisión, y
+    # dibujar un área menor que la real es la misma mentira en pequeño.
+    fires["position_precision_m"] = _precision_por_sensor(fires.get("sensors"))
 
     orphans = official[official["fire_id"].isna()].copy()
     if not orphans.empty:

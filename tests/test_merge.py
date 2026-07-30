@@ -418,3 +418,50 @@ def test_match_with_no_fires_keeps_officials(now):
     assert emparejados["fire_id"].isna().all()
     assert np.isnan(emparejados["match_distance_m"].iloc[0])
     assert clusters.empty
+
+
+# --- Precisión de la posición según el sensor -------------------------------
+#
+# El anillo punteado del mapa usa `position_precision_m`, y la ficha afirma
+# sobre él que el incendio "puede estar en cualquier punto de su interior". Si
+# el número es menor que la incertidumbre real, esa frase es falsa. Por eso hay
+# tres pruebas y no una: el caso VIIRS, el caso MODIS y el mixto.
+
+
+def test_precision_es_de_viirs_cuando_viirs_lo_vio(now):
+    fires = make_fires([
+        {"fire_id": "f1", "latitude": 40.0, "longitude": -3.0, "sensors": "VIIRS_SNPP_NRT"},
+    ])
+    emparejados, clusters = merge.match(make_official([]).iloc[0:0], fires)
+    salida = merge.build_incidents(emparejados, clusters)
+    assert salida["position_precision_m"].iloc[0] == merge.VIIRS_PIXEL_PRECISION_M
+
+
+def test_precision_es_de_modis_cuando_solo_modis_lo_vio(now):
+    """Un incendio visto solo por MODIS se conoce con 1 km, no con 375 m.
+
+    Regresión del bug documentado en ESTADO-DEL-PROYECTO §5.1: la precisión se
+    asignaba con una constante global, así que 8 de 44 incidentes en producción
+    publicaban un anillo de incertidumbre tres veces menor que el real.
+    """
+    fires = make_fires([
+        {"fire_id": "f1", "latitude": 40.0, "longitude": -3.0, "sensors": "MODIS_NRT"},
+    ])
+    emparejados, clusters = merge.match(make_official([]).iloc[0:0], fires)
+    salida = merge.build_incidents(emparejados, clusters)
+    assert salida["position_precision_m"].iloc[0] == merge.MODIS_PIXEL_PRECISION_M
+
+
+def test_precision_toma_el_mejor_sensor_no_el_peor(now):
+    """Con ambos sensores manda VIIRS: la detección más fina es la que acota."""
+    fires = make_fires([
+        {
+            "fire_id": "f1",
+            "latitude": 40.0,
+            "longitude": -3.0,
+            "sensors": "MODIS_NRT,VIIRS_NOAA20_NRT",
+        },
+    ])
+    emparejados, clusters = merge.match(make_official([]).iloc[0:0], fires)
+    salida = merge.build_incidents(emparejados, clusters)
+    assert salida["position_precision_m"].iloc[0] == merge.VIIRS_PIXEL_PRECISION_M

@@ -71,17 +71,23 @@ del manifiesto sin decir por qué.
 
 **Solución.** Añadido a `HOTSPOT_WEB_FIELDS`.
 
-### A5 · La precisión de posición miente en los incendios que solo vio MODIS
+### A5 · La precisión de posición mentía en los incendios que solo vio MODIS
 
-**ABIERTO.** Ver `docs/ESTADO-DEL-PROYECTO.md` §5.1.
+**RESUELTO.**
 
-`merge.py:242` asigna 375 m —el píxel de VIIRS— a todos los incendios
-satelitales. El de MODIS es 1 km. 8 de 44 incendios en producción publican una
+`merge.py` asignaba 375 m —el píxel de VIIRS— a todos los incendios satelitales.
+El de MODIS es 1 km, así que 8 de 44 incendios en producción publicaban una
 incertidumbre casi tres veces menor que la real, y la ficha afirma sobre ese
 radio que «el incendio puede estar en cualquier punto de su interior».
 
 Se detectó al revisar la sección de precisión de la ficha, no por un test: el
 dato era plausible y ninguna aserción lo cubría.
+
+**Solución.** La precisión se deriva del **mejor** sensor que vio cada incendio,
+usando el campo `sensors`: VIIRS presente → 375 m, solo MODIS → 1 km. Las
+constantes salieron de dentro de `merge.py`. Tres pruebas fijan los casos VIIRS,
+MODIS y mixto, y se comprobó que la de MODIS falla sin el arreglo — un test que
+no se ha visto fallar no prueba nada.
 
 ---
 
@@ -112,6 +118,15 @@ que sin municipio ni estado.
 **Solución.** `warn_missing_fields` compara el `field_map` declarado contra las
 claves que trae el payload y avisa de las que faltan. Es la diferencia entre
 enterarse el mismo día o en agosto.
+
+### B4b · El TAR de AEMET se leía como texto plano
+
+La sonda reconocía TAR.GZ por la firma de gzip. AEMET sirve los avisos como
+`application/x-gtar` **sin comprimir**, así que caían en la rama de "texto
+plano" y salía el volcado binario del tar en lugar del esquema.
+
+**Solución.** Se detecta el TAR por su marca `ustar` en el byte 257, que está
+igual comprimido o no.
 
 ### B4 · La sonda de AEMET se quedaba en el sobre
 
@@ -292,9 +307,9 @@ de un JSON es una suposición que nadie ha escrito en ningún contrato.
 
 ## F · Despliegue e infraestructura
 
-### F1 · El scope `workflow` bloquea toda edición de Actions
+### F1 · El scope `workflow` bloqueaba toda edición de Actions
 
-**ABIERTO.** Ni el token del agente ni el cacheado en el llavero de macOS tienen
+**RESUELTO.** Ni el token del agente ni el cacheado en el llavero de macOS tienen
 el scope `workflow`. GitHub rechaza cualquier push que toque
 `.github/workflows/`, y como **una push es atómica**, un solo commit con un
 workflow tumba el lote entero.
@@ -303,15 +318,19 @@ Es una protección deliberada de GitHub: sin ella, cualquier integración con
 permiso de escritura podría inyectar un workflow que se ejecuta con todos los
 secretos del repositorio.
 
-**Solución parcial.** Los commits se separan: lo que no toca workflows sube, y
-los ficheros de workflow quedan pendientes en el árbol de trabajo.
+**Solución provisional mientras duró.** Los commits se separaban: lo que no
+tocaba workflows subía, y los ficheros de workflow quedaban pendientes en el
+árbol de trabajo.
 
-**Solución completa**, pendiente de ejecutar una vez en local:
+**Solución definitiva**, ejecutada una vez en local:
 
 ```
 gh auth refresh -h github.com -s workflow
 gh auth setup-git
 ```
+
+El segundo comando es la mitad que se olvida: sin él, git sigue tirando del
+token del llavero y la push vuelve a rebotar aunque `gh` ya tenga el scope.
 
 ### F2 · La clave de AEMET se conectó a un workflow desactivado
 
@@ -321,7 +340,7 @@ bucket de Cloudflare R2. El que corre cada 30 minutos es `publicar.yml`.
 Habría quedado como configurada sin ejecutarse nunca. Se detectó al leer la
 cabecera del fichero, que lo dice en la primera línea.
 
-**Solución.** La clave va en `publicar.yml`. Pendiente de F1 para poder subirla.
+**Solución.** La clave va en `publicar.yml`. Ya en producción.
 
 ### F3 · Un `git reset --hard` borró un commit sin subir
 
@@ -338,6 +357,27 @@ volvió a rebotar por F1.
 **Solución.** `--no-verify` en el commit de separación.
 
 ---
+
+### C4 · El índice de riesgo de AEMET no sirve para esto
+
+Responde `404 · No hay datos que satisfagan esos criterios`, y aunque
+respondiera son **mapas PNG**, no datos vectoriales: no se pueden consultar por
+municipio ni cruzar con un incendio.
+
+**Decisión.** No se implementa. Los avisos CAP cubren la necesidad real —viento,
+calor y tormenta declarados oficialmente— y sí son datos.
+
+### D9 · El polígono de CAP viene en lat,lon y GeoJSON quiere lon,lat
+
+Riesgo detectado al escribir el adaptador, no en producción, porque el modo de
+fallo era conocido: sin invertir el orden, el aviso de Albacete (39 N, 2 O) se
+dibuja en (2 N, 39 E) — Somalia. El mapa **sigue pintando polígonos**, así que
+comprobar que "hay datos" no detecta nada.
+
+**Solución.** La inversión va en el adaptador, no en el frontend, más dos
+pruebas que comprueban los límites geográficos: una unitaria sobre el fixture y
+una E2E sobre la capa montada. Ninguna de las dos afirma que existan datos:
+afirman dónde caen.
 
 ## Lo que se repite
 
