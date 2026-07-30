@@ -523,3 +523,105 @@ def test_un_huerfano_oficial_sin_estado_declarado_queda_nulo(now):
 
     assert huerfano["status"] is None or pd.isna(huerfano["status"])
     assert huerfano["status_origen"] == "oficial"
+
+
+# --- Lo que solo sabe el parte oficial --------------------------------------
+#
+# `igr_level` y los medios estaban en el contrato 4.3 desde el principio, el
+# frontend los pintaba, y **nadie los rellenaba nunca**: `match` propagaba solo
+# el estado, el nombre y `confirmed_by`. No se notó porque el generador de
+# demostración los ponía a mano después, así que la demo enseñaba «Nivel IGR 2 ·
+# 16 aéreos» y producción publicaba los dos campos nulos.
+#
+# Un dato que solo existe en la demo es peor que no tenerlo: parece que funciona.
+
+
+def test_el_nivel_del_parte_oficial_llega_al_incidente(now):
+    official = make_official([
+        {"source_id": "jcyl", "latitude": 39.5, "longitude": -0.5,
+         "precision_m": 500.0, "status": "activo", "level": 2},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["igr_level"] == 2
+
+
+def test_los_medios_del_parte_oficial_llegan_al_incidente(now):
+    official = make_official([
+        {"source_id": "jcyl", "latitude": 39.5, "longitude": -0.5,
+         "precision_m": 500.0, "status": "activo",
+         "resources": "16 aéreos · 80 terrestres"},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["resources_text"] == "16 aéreos · 80 terrestres"
+
+
+def test_con_dos_fuentes_gana_el_nivel_mas_alto(now):
+    """Mismo criterio que `_worst_status`: quedarse corto es el error caro."""
+    official = make_official([
+        {"source_id": "jcyl", "latitude": 39.500, "longitude": -0.500,
+         "precision_m": 500.0, "status": "activo", "level": 1},
+        {"source_id": "infocam", "latitude": 39.501, "longitude": -0.501,
+         "precision_m": 500.0, "status": "activo", "level": 2},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["igr_level"] == 2
+
+
+def test_con_dos_fuentes_los_medios_se_suman_sin_repetir(now):
+    """Dos comunidades que confirman el mismo frente despliegan cada una los
+    suyos, y el texto debe reflejar las dos."""
+    official = make_official([
+        {"source_id": "jcyl", "latitude": 39.500, "longitude": -0.500,
+         "precision_m": 500.0, "status": "activo", "resources": "4 autobombas"},
+        {"source_id": "infocam", "latitude": 39.501, "longitude": -0.501,
+         "precision_m": 500.0, "status": "activo", "resources": "2 helicópteros"},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    texto = merge.build_incidents(emparejados, clusters).iloc[0]["resources_text"]
+
+    assert "4 autobombas" in texto
+    assert "2 helicópteros" in texto
+
+
+def test_un_huerfano_oficial_tambien_publica_nivel_y_medios(now):
+    """Sin detección satelital el parte sigue siendo un parte: su nivel y sus
+    medios son igual de válidos."""
+    official = make_official([
+        {"source_id": "112cv", "latitude": 38.0, "longitude": -1.0,
+         "precision_m": 100.0, "status": "activo", "level": 1,
+         "resources": "1 aéreo · 8 terrestres"},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 42.0, "longitude": -6.0}])
+
+    emparejados, clusters = merge.match(official, fires)
+    incidentes = merge.build_incidents(emparejados, clusters)
+    huerfano = incidentes[incidentes["origin"] == "oficial"].iloc[0]
+
+    assert huerfano["igr_level"] == 1
+    assert huerfano["resources_text"] == "1 aéreo · 8 terrestres"
+
+
+def test_sin_parte_oficial_el_nivel_y_los_medios_quedan_nulos(now):
+    """Un satélite no despliega bomberos ni declara niveles."""
+    official = make_official([]).iloc[0:0]
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert pd.isna(fila["igr_level"])
+    assert not fila["resources_text"]

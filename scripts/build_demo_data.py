@@ -431,12 +431,12 @@ def main() -> None:
     )
 
     # Medios e IGR desde el parte, para la ficha.
-    por_id = official.dropna(subset=["fire_id"]).set_index("fire_id")
-    huerfanos = official[official["fire_id"].isna()].copy()
-    huerfanos.index = "off_" + huerfanos["source_id"] + "_" + huerfanos["external_id"].astype(str)
-    todos = pd.concat([por_id, huerfanos])
-    incidents["igr_level"] = incidents["id"].map(todos["level"].to_dict())
-    incidents["resources_text"] = incidents["id"].map(todos["resources"].to_dict())
+    # Ya NO se rellenan aquí `igr_level` ni `resources_text`.
+    #
+    # Se hacía a mano y eso ocultaba que `merge.build_incidents` nunca los
+    # propagaba: la demo enseñaba «Nivel IGR 2 · 16 aéreos» y producción salía
+    # con los dos campos nulos. Un dato que solo existe en la demostración es
+    # peor que no tenerlo, porque parece que funciona.
 
     # El contexto se aplica igual que en producción: así la ficha de la demo
     # ejercita el mismo camino y el E2E tiene qué comprobar.
@@ -452,7 +452,6 @@ def main() -> None:
     validate_mod.validate_or_abort(incidents)
 
     web = build_mod.incidents_for_web(incidents)
-    web["resources_text"] = incidents["resources_text"].values
 
     manifest = build_mod.build_manifest(
         hotspots, incidents,
