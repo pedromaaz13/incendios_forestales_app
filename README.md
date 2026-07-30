@@ -88,7 +88,7 @@ el engaño que este proyecto existe para no cometer.
 
 **Lo único que bloquea la puesta en producción con datos reales** son los cinco
 endpoints autonómicos de RF-P-03. No se inventan: el procedimiento para
-descubrirlos está en `docs/descubrimiento-fuentes.md`. Mientras tanto salen como
+descubrirlos está en `docs/COMO-CONECTAR-LAS-FUENTES.md`. Mientras tanto salen como
 `disabled` en el panel de estado, que es honesto, en lugar de como "0 incendios",
 que no lo sería.
 

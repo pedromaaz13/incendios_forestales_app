@@ -38,7 +38,7 @@ Dame primero el plan: qué ficheros creas y qué casos cubre cada uno.
 
 **Resultado:** 96 % de cobertura. Los casos que el código actual no cumple
 quedaron como `xfail(strict=True)`, documentados en
-`docs/hallazgos-sesion-1.md`. `src/` sin tocar.
+`docs/ERRORES-Y-SOLUCIONES.md`. `src/` sin tocar.
 
 ---
 
@@ -138,10 +138,10 @@ Añade también los escenarios E2E de 8.4 que aún no existan.
 ## Sesión 6 · Fuentes oficiales (hito 3)
 
 **Bloqueado** hasta que tengas al menos un endpoint descubierto siguiendo
-`docs/descubrimiento-fuentes.md`.
+`docs/COMO-CONECTAR-LAS-FUENTES.md`.
 
 ```
-Lee @docs/descubrimiento-fuentes.md y @src/incendios/sources/
+Lee @docs/COMO-CONECTAR-LAS-FUENTES.md y @src/incendios/sources/
 
 He descubierto el endpoint de {FUENTE}:
   URL: {url}

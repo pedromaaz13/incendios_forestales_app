@@ -19,7 +19,8 @@ especificado en `docs/ESPECIFICACION.md`.
 3. **`src/incendios/config.py`** — todos los parámetros ajustables en un sitio.
 4. **`src/incendios/merge.py`** — la lógica menos obvia del repo. Léela entera
    antes de modificar cualquier cosa de fusión.
-5. **`docs/descubrimiento-fuentes.md`** — lo que está bloqueado esperando datos.
+5. **`docs/COMO-CONECTAR-LAS-FUENTES.md`** — lo que está bloqueado esperando
+   datos, y su anexo técnico para escribir un adaptador nuevo.
 
 ## Estado actual
 
