@@ -180,3 +180,12 @@ test('captura · 17-sin-webgl.png', async ({ page }) => {
   await page.waitForTimeout(700);
   await page.screenshot({ path: ruta('17-sin-webgl.png') });
 });
+
+test('captura · 18-avisos-aemet.png', async ({ page }) => {
+  // Vista de conjunto de la península: los avisos cubren comarcas enteras, así
+  // que a zoom 8 solo se vería un borde y no se entendería la capa.
+  await abrir(page, '/?lat=40.0&lon=-3.5&zoom=5.4');
+  await page.locator('[data-capa="avisos"]').click();
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: ruta('18-avisos-aemet.png') });
+});
