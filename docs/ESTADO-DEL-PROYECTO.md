@@ -37,7 +37,7 @@ Recuento real de la última ejecución:
 | Incidentes | `incidents.geojson` | 37 |
 | Focos de calor | `hotspots.geojson` | 2.412 |
 | Perímetros estimados | `perimeters.geojson` | 126 |
-| Viento | `wind.geojson` | 230 nodos |
+| Viento, temperatura y humedad | `wind.geojson` | 230 nodos |
 | Calidad del aire | `aire.geojson` | 230 nodos |
 | Carreteras cortadas | `trafico.geojson` | 477 |
 | Avisos oficiales de AEMET | `avisos.geojson` | según boletín |
@@ -71,10 +71,10 @@ frontend enseña los dos números y nunca uno solo.
 | `merge.py` | Completo | Precisión derivada del sensor |
 | `enrich.py` | Completo | Geocoding inverso sobre la capa del IGN (8.220 municipios) |
 | `export.py` | Completo | GeoJSON, PMTiles, Parquet |
-| `validate.py` | Completo | Los 8 invariantes de la sección 4.4 |
+| `validate.py` | Completo | Los 8 invariantes de 4.4 más el 9: ningún estado sin quien lo afirme |
 | `wind.py` | Completo | 230 nodos · viento, temperatura y humedad |
 | `aemet.py` | Completo | Avisos CAP 1.2 de Meteoalerta |
-| `contexto.py` | Completo | Cruza viento, avisos y cortes con cada incendio |
+| `contexto.py` | Completo | Viento, avisos, cortes, ritmo y distancia a población |
 | `aire.py` | Completo | CAMS vía Open-Meteo, bandas EAQI oficiales |
 | `trafico.py` | Completo | DGT DATEX II v3.7, feed nacional |
 | `health.py` | Completo | Estado y antigüedad por fuente |
@@ -120,23 +120,33 @@ rompió se convierte en fixture **antes** de arreglar el código.
 
 `merge.py` asignaba 375 m —el píxel de VIIRS— a todos los incendios satelitales.
 El de MODIS es 1 km, así que 8 de 44 incidentes publicaban una incertidumbre
-casi tres veces menor que la real, y sobre ese radio la ficha afirma que «el
-incendio puede estar en cualquier punto de su interior».
-
-Resuelto derivando la precisión del **mejor** sensor que vio cada incendio, a
-partir del campo `sensors`. Tres pruebas de regresión fijan los casos VIIRS,
-MODIS y mixto; se verificó que la de MODIS falla sin el arreglo.
+casi tres veces menor que la real. Resuelto derivándola del **mejor** sensor que
+vio cada incendio, con tres pruebas de regresión.
 
 ### 5.2 · ~~El scope `workflow` del token bloquea Actions~~ · RESUELTO
 
-Ni el token del agente ni el cacheado en el llavero de macOS tenían el scope
-`workflow`, así que ningún fichero de `.github/workflows/` podía subirse. Y una
-push es atómica: un solo commit que tocara un workflow tumbaba el lote entero.
+`gh auth refresh -h github.com -s workflow` más `gh auth setup-git`. El segundo
+es la mitad que se olvida: sin él git sigue tirando del token del llavero.
 
-Resuelto con `gh auth refresh -h github.com -s workflow` más
-`gh auth setup-git`, que hace que git use el token de `gh` en lugar del que
-estaba cacheado en el llavero. `sondear.yml` está en `main` y `publicar.yml` ya
-pasa `AEMET_API_KEY` al pipeline.
+### 5.2b · ~~«Activo» se afirmaba sin que nadie lo declarara~~ · RESUELTO
+
+El fallo de más alcance que ha tenido el proyecto: los 79 incendios de producción
+publicaban `status = "activo"` y la interfaz los pintaba en rojo con esa palabra,
+sin que ningún servicio de extinción lo hubiera declarado. Internamente solo
+significaba «detectado dentro de la ventana reciente», y con 6 h de antigüedad ese
+fuego puede estar apagado.
+
+Ahora `status` es **nulo** sin parte oficial, `status_origen` dice quién lo
+afirma, y la interfaz enseña «Calor detectado hace 6 h» en gris. El **invariante
+9** aborta la publicación si alguien vuelve a rellenar el hueco con un valor por
+defecto.
+
+### 5.2c · ~~La capa de focos nacía sin filtro~~ · RESUELTO
+
+Se monta de forma asíncrona y `aplicarFiltros` corría antes de que existiera.
+FIRMS se pide con 3 días de margen: **579 de los 1.182 focos publicados tenían
+más de 24 h** y se pintaban con el control puesto en «1 día». No fallaba nada
+visible; el mapa enseñaba más focos de los que decía.
 
 ### 5.3 · Cinco endpoints autonómicos sin descubrir
 
@@ -215,8 +225,32 @@ nuestra ante alguien que está mirando si arde algo cerca de su casa: si acierta
 no aporta autoridad y si falla el daño es real. Cuando EFFIS vuelva, su
 `fwi_nuts5.fwi` es el índice **oficial** por municipio.
 
+### Prioridad 2b · Lo hecho en la ronda de eficiencia y honestidad
+
+- **Estado honesto** (5.2b) y el invariante que lo protege
+- **Ritmo de crecimiento observado**: focos nuevos en 6 h y su equivalente en
+  ha/h, con la misma constante que usa `area_est_ha` para que los dos números
+  cuadren
+- **Distancia al núcleo habitado más cercano**, con nombre y población. Se usa la
+  colección `nuc` del IGN (37.497 núcleos), **no** el centroide del término
+  municipal, que está a 3,3 km del pueblo de media y hasta a 23,6 km en el
+  municipio más grande
+- **Confianza baja conservada** en vez de descartada: 256 detecciones que antes
+  se tiraban ahora se publican etiquetadas y el control «Incluir baja» las
+  revela. No crean incidentes, y ahora se pueden medir
+- **Un tercio menos de peticiones a FIRMS**: el bbox de `baleares` estaba
+  contenido por completo en el de `peninsula`
+- **Cuota de FIRMS publicada** en `sources.json`, leyendo la cabecera
+  `Remaining-request-endpoint` que se ignoraba
+
 ### Prioridad 3 · Fuentes nuevas que sí aportan
 
+- **Sentinel-3 SLSTR** · mejor candidato que SEVIRI y no lo había considerado.
+  Dos satélites, ~4 pasadas más al día, y producto de fuego a **1 km** — la misma
+  sensibilidad que MODIS. Con una mediana de 28 ha por incendio, SEVIRI apenas
+  vería ninguno de los que tenemos. Sondeado el 30-07-2026: el catálogo STAC de
+  Copernicus responde 200, pero `resto/api` da **403**, así que hace falta
+  registro. Bloqueado en eso.
 - **SEVIRI** (RF-P-02) · cadencia de **15 minutos** frente a las 2-4 pasadas
   diarias de VIIRS, a cambio de 3 km de píxel. Hoy la edad del dato llega a
   5 h; SEVIRI la bajaría a minutos. Es la mejora más grande posible en latencia,

@@ -67,6 +67,10 @@ export interface PropiedadesIncidente {
   focos_recientes: number | null;
   /** Superficie nueva detectada por hora. Observada, no prevista. */
   crecimiento_ha_h: number | null;
+  /** Núcleo de población habitado más cercano. Nulo si está a más de 50 km. */
+  nucleo_cercano: string | null;
+  nucleo_cercano_km: number | null;
+  nucleo_cercano_habitantes: number | null;
   frp_total_mw: number | null;
   intensity: Intensidad | null;
   area_est_ha: number | null;

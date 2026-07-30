@@ -344,3 +344,75 @@ def test_sin_hotspots_el_ritmo_queda_nulo_no_cero():
     fila = contexto.anadir_ritmo(inc, None).iloc[0]
 
     assert pd.isna(fila["focos_recientes"])
+
+
+# --- Distancia al núcleo de población ---------------------------------------
+#
+# Es la única línea de la aplicación que responde literalmente a la pregunta con
+# la que se entra: ¿arde algo cerca de mi casa? Y por eso es también la más
+# sensible a una imprecisión.
+
+
+def _nucleos(*items: tuple[str, float, float, int]) -> gpd.GeoDataFrame:
+    """(nombre, lat, lon, habitantes)."""
+    return gpd.GeoDataFrame(
+        {"nombre": [i[0] for i in items], "habitantes": [i[3] for i in items]},
+        geometry=[Point(i[2], i[1]) for i in items],
+        crs=CRS_WGS84,
+    )
+
+
+def test_nombra_el_nucleo_habitado_mas_cercano():
+    inc = _incendios((40.000, -3.000))
+    n = _nucleos(("Cercano", 40.02, -3.00, 500), ("Lejano", 40.50, -3.00, 90000))
+
+    fila = contexto.anadir_distancia_poblacion(inc, n).iloc[0]
+
+    assert fila["nucleo_cercano"] == "Cercano"
+    assert 1.5 < fila["nucleo_cercano_km"] < 3.0
+    assert fila["nucleo_cercano_habitantes"] == 500
+
+
+def test_los_nucleos_deshabitados_no_cuentan():
+    """Cero habitantes son despoblados y polígonos industriales.
+
+    Decir que un incendio está a 800 m de un núcleo deshabitado alarma sin
+    motivo, y además desplaza al pueblo que sí importa.
+    """
+    inc = _incendios((40.000, -3.000))
+    n = _nucleos(("Despoblado", 40.005, -3.000, 0), ("Con gente", 40.05, -3.00, 800))
+
+    fila = contexto.anadir_distancia_poblacion(inc, n).iloc[0]
+
+    assert fila["nucleo_cercano"] == "Con gente"
+
+
+def test_en_despoblado_no_se_nombra_un_pueblo_a_58_km():
+    """Por encima del umbral no se nombra ninguno: ocuparía una línea de la
+    ficha para no informar de nada."""
+    inc = _incendios((40.0, -3.0))
+    n = _nucleos(("Muy lejos", 41.0, -3.0, 5000))  # ~111 km
+
+    fila = contexto.anadir_distancia_poblacion(inc, n).iloc[0]
+
+    assert pd.isna(fila["nucleo_cercano"])
+    assert pd.isna(fila["nucleo_cercano_km"])
+
+
+def test_sin_capa_de_nucleos_los_campos_quedan_nulos():
+    """El pipeline sigue sin la capa: es enriquecimiento, no un requisito."""
+    salida = contexto.anadir_distancia_poblacion(
+        _incendios((40.0, -3.0)),
+        gpd.GeoDataFrame({"nombre": [], "habitantes": []}, geometry=[], crs=CRS_WGS84),
+    )
+
+    assert pd.isna(salida.iloc[0]["nucleo_cercano"])
+
+
+def test_un_incendio_equidistante_no_se_duplica():
+    inc = _incendios((40.0, -3.0))
+    n = _nucleos(("Norte", 40.02, -3.0, 100), ("Sur", 39.98, -3.0, 100))
+
+    salida = contexto.anadir_distancia_poblacion(inc, n)
+
+    assert len(salida) == 1

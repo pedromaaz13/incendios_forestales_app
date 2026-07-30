@@ -140,11 +140,25 @@ function bloqueContexto(p: PropiedadesIncidente): string {
         }</b></p>`
       : '';
 
-  if (!viento && !aviso && !cortes && !ambiente) return '';
+  const poblacion =
+    p.nucleo_cercano && p.nucleo_cercano_km !== null
+      ? `<p class="ficha__dato"><span>Núcleo habitado más cercano</span><b>${texto(
+          p.nucleo_cercano,
+        )} · ${numero(p.nucleo_cercano_km, 1)} km</b></p>${
+          p.nucleo_cercano_habitantes
+            ? `<p class="ficha__nota">${numero(
+                p.nucleo_cercano_habitantes,
+              )} habitantes. Distancia al centro del núcleo, no a la primera casa.</p>`
+            : ''
+        }`
+      : '';
+
+  if (!viento && !aviso && !cortes && !ambiente && !poblacion) return '';
 
   return `
     <div class="ficha__seccion">
       <h3>Condiciones en la zona</h3>
+      ${poblacion}
       ${viento ? `<p class="ficha__dato"><span>Viento</span><b>${texto(viento)}</b></p>` : ''}
       ${ambiente}
       ${aviso}

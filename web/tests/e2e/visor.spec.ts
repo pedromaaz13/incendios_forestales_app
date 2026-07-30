@@ -772,3 +772,18 @@ test('la capa de focos nace con el filtro de período aplicado', async ({ page }
   expect(filtro).toContain('acq_dt');
   expect(filtro).toContain('confidence_pct');
 });
+
+test('la ficha dice a qué distancia está el pueblo más cercano', async ({ page }) => {
+  // Es la única línea de la aplicación que responde literalmente a la pregunta
+  // con la que se entra: ¿arde algo cerca de mi casa? Y se mide contra los
+  // núcleos del IGN, no contra el centroide del término municipal, que está a
+  // 3,3 km del pueblo de media y hasta a 23,6 km en el municipio más grande.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Núcleo habitado más cercano');
+  await expect(ficha).toContainText('km');
+  await expect(ficha).toContainText('no a la primera casa');
+});
