@@ -307,6 +307,53 @@ de un JSON es una suposición que nadie ha escrito en ningún contrato.
 
 ## F · Despliegue e infraestructura
 
+### F0 · Un pipeline que abortaba se leía como éxito · `pipefail`
+
+**El peor fallo de la categoría.** Detectado el 30-07-2026 en una ejecución roja.
+
+`publicar.yml` decidía si el pipeline había funcionado con:
+
+```bash
+if python -m incendios.pipeline -v --no-raw 2>&1 | tee /tmp/pipeline.txt; then
+```
+
+Sin `set -o pipefail`, bash evalúa el código de salida del **último** comando de
+la tubería —`tee`, que siempre devuelve 0— y no el de Python. Se comprueba en dos
+líneas:
+
+```
+$ if false | tee /dev/null; then echo "el fallo se lee como ÉXITO"; fi
+el fallo se lee como ÉXITO
+```
+
+Ese día se cayó la red del runner: las 12 peticiones a FIRMS dieron
+`Network is unreachable`, el pipeline abortó correctamente sin sobrescribir, y el
+`if` lo leyó como éxito. La copia falló al no haber salidas y el job murió ahí,
+así que el respaldo nunca se ejecutó.
+
+**Por qué es el peor de la categoría.** Ese día falló ruidosamente por
+casualidad, porque `data/out/` estaba vacío. Con ficheros de una ejecución
+anterior en ese directorio, se habrían copiado y publicado como frescos: datos
+viejos con antigüedad nueva, que es la mentira exacta que este proyecto existe
+para no contar.
+
+**Solución.** `set -o pipefail` al principio del paso. El comentario del
+workflow explica el porqué, no el qué, para que nadie lo quite por parecer ruido.
+
+### F0b · El respaldo publicaba datos de demostración encima de los reales
+
+Destapado por el arreglo anterior. Cuando el pipeline abortaba, la rama de
+respaldo ejecutaba `build_demo_data.py` y publicaba: un corte de red de un minuto
+sustituía los incendios reales por incendios inventados. Hay una banda que avisa
+de que son datos de demostración, pero eso no arregla que el visor esté enseñando
+fuegos que no existen.
+
+**Solución.** El aborto ya no cae a la demo: sale con código distinto de cero, los
+pasos de compilación y despliegue se saltan solos, y la publicación anterior sigue
+en pie con su antigüedad real, que crecerá a la vista. El job en rojo es la
+alerta. La demo se conserva solo para el arranque en frío —repositorio recién
+clonado, sin clave— que es una situación distinta y legítima.
+
 ### F1 · El scope `workflow` bloqueaba toda edición de Actions
 
 **RESUELTO.** Ni el token del agente ni el cacheado en el llavero de macOS tienen
