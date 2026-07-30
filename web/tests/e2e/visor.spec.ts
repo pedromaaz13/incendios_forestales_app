@@ -642,3 +642,44 @@ test('la leyenda de avisos aclara que son de AEMET y sobre el tiempo', async ({ 
   await expect(leyenda).toContainText('tiempo previsto');
   await expect(leyenda).toContainText('no de que haya');
 });
+
+test('la ficha dice hacia dónde sopla el viento, no solo de dónde viene', async ({ page }) => {
+  // Es la pregunta con la que se entra al visor: ¿viene hacia mí? Dar solo el
+  // origen obliga a hacer la resta mentalmente y es donde la gente se equivoca.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Condiciones en la zona');
+  await expect(ficha).toContainText('Sopla hacia el');
+  await expect(ficha).toContainText('km/h');
+});
+
+test('el contexto no se presenta nunca como previsión', async ({ page }) => {
+  // Viento observado e interpolado, no pronosticado. Decir "va a soplar" sería
+  // una predicción nuestra sobre una aplicación que mira gente asustada.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('no una previsión');
+  await expect(ficha).toContainText('lo declara');
+  // Ningún verbo de certeza sobre el futuro del incendio.
+  await expect(ficha).not.toContainText(/avanzará|se propagará|llegará a/);
+});
+
+test('la ficha atribuye el aviso a AEMET y a la comarca, no al incendio', async ({ page }) => {
+  // El aviso se declara sobre una comarca entera. Decir "hay aviso en esta zona"
+  // es exacto; decir "hay aviso en este incendio" no lo sería, y sugeriría que
+  // AEMET se ha pronunciado sobre este fuego concreto.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Aviso de AEMET');
+  await expect(ficha).toContainText('sobre la');
+  await expect(ficha).toContainText('comarca');
+});

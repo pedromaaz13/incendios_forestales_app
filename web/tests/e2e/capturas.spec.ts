@@ -189,3 +189,12 @@ test('captura · 18-avisos-aemet.png', async ({ page }) => {
   await page.waitForTimeout(1800);
   await page.screenshot({ path: ruta('18-avisos-aemet.png') });
 });
+
+test('captura · 19-ficha-contexto.png', async ({ page }) => {
+  // Sierra de Gata: el incendio de la demo que cae bajo aviso naranja y tiene
+  // cortes de carretera cerca, así que la ficha enseña las tres líneas.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: ruta('19-ficha-contexto.png') });
+});

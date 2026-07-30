@@ -31,6 +31,26 @@ export interface PropiedadesIncidente {
   sensors: string | null;
   /** Radio equivalente del área estimada, en km. Misma estimación, otra forma. */
   radio_est_km: number | null;
+
+  // Contexto cruzado con otras capas ya publicadas. Nulo significa "no se ha
+  // podido saber" —fuente caída, o incendio fuera de la malla de viento— y la
+  // ficha lo omite en vez de enseñar un hueco.
+  viento_kmh: number | null;
+  viento_rachas_kmh: number | null;
+  /** Hacia dónde sopla, en grados. La pregunta útil es esta, no de dónde viene. */
+  viento_hacia_deg: number | null;
+  /** Punto cardinal de **origen**: «viento del norte» sopla hacia el sur. */
+  viento_cardinal_desde: string | null;
+  temp_c: number | null;
+  humedad_pct: number | null;
+  aviso_nivel: string | null;
+  aviso_nivel_orden: number | null;
+  aviso_fenomeno: string | null;
+  aviso_titular: string | null;
+  /** Cortes a menos de 15 km. Cero es "se miró y no había"; nulo, "no se supo". */
+  cortes_cerca: number | null;
+  /** De esos, los que la DGT declara causados por incendio. Nunca inferido. */
+  cortes_cerca_por_incendio: number | null;
   frp_total_mw: number | null;
   intensity: Intensidad | null;
   area_est_ha: number | null;

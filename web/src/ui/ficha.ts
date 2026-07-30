@@ -19,6 +19,7 @@ import {
   listaFuentes,
   margenPosicion,
   numero,
+  fraseViento,
   resolucionSensor,
   sensores,
 } from '../formato';
@@ -83,6 +84,8 @@ function contenido(p: PropiedadesIncidente): string {
     </p>
     ${dato('Confirmado por', listaFuentes(p.confirmed_by))}
 
+    ${bloqueContexto(p)}
+
     ${bloqueOficial(p)}
     ${bloqueSatelital(p)}
     ${evolutivoDeIncendio(focosPorIncendio.get(p.id) ?? [])}
@@ -100,6 +103,63 @@ function contenido(p: PropiedadesIncidente): string {
     </div>
 
     <a class="ficha__enlace" href="${enlace}">Enlace permanente a este incidente</a>`;
+}
+
+/**
+ * Condiciones alrededor del incendio: viento, aviso oficial y accesos cortados.
+ *
+ * Va antes que los detalles del incendio porque responde la pregunta con la que
+ * se entra —*¿viene hacia mí?*— y no la pregunta con la que se sale.
+ *
+ * Cada línea es un dato observado o declarado por otro. **No hay ninguna
+ * predicción**: se dice hacia dónde sopla el viento ahora, no hacia dónde
+ * avanzará el fuego. Combinar las tres cosas para pronosticar sería una opinión
+ * nuestra, y este proyecto no tiene autoridad para dársela a alguien asustado.
+ */
+function bloqueContexto(p: PropiedadesIncidente): string {
+  const viento = fraseViento(p);
+  const aviso = p.aviso_nivel
+    ? `<p class="ficha__dato"><span>Aviso de AEMET</span><b class="ficha__aviso ficha__aviso--${p.aviso_nivel}">${p.aviso_nivel} · ${texto(p.aviso_fenomeno)}</b></p>`
+    : '';
+
+  // Cero cortes es un dato: se miró y no había. Nulo es que no se pudo mirar,
+  // y entonces no se dice nada en vez de afirmar que no hay ninguno.
+  const cortes =
+    p.cortes_cerca !== null && p.cortes_cerca > 0
+      ? `<p class="ficha__dato"><span>Carreteras cortadas a menos de 15 km</span><b>${numero(p.cortes_cerca)}</b></p>${
+          p.cortes_cerca_por_incendio
+            ? `<p class="ficha__nota">${numero(p.cortes_cerca_por_incendio)} de ellas las declara la DGT causadas por incendio forestal.</p>`
+            : ''
+        }`
+      : '';
+
+  const ambiente =
+    p.temp_c !== null
+      ? `<p class="ficha__dato"><span>Temperatura</span><b>${numero(p.temp_c, 1)} ºC${
+          p.humedad_pct !== null ? ` · ${numero(p.humedad_pct)} % humedad` : ''
+        }</b></p>`
+      : '';
+
+  if (!viento && !aviso && !cortes && !ambiente) return '';
+
+  return `
+    <div class="ficha__seccion">
+      <h3>Condiciones en la zona</h3>
+      ${viento ? `<p class="ficha__dato"><span>Viento</span><b>${texto(viento)}</b></p>` : ''}
+      ${ambiente}
+      ${aviso}
+      ${
+        p.aviso_titular
+          ? `<p class="ficha__nota">${texto(p.aviso_titular)}</p>`
+          : ''
+      }
+      ${cortes}
+      <p class="ficha__estimacion">
+        Viento y temperatura son la <b>observación más reciente</b> interpolada a
+        esta posición, no una previsión. El aviso lo declara <b>AEMET</b> sobre la
+        comarca, no sobre este incendio.
+      </p>
+    </div>`;
 }
 
 function bloqueOficial(p: PropiedadesIncidente): string {

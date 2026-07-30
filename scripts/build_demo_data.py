@@ -32,6 +32,7 @@ from incendios import aire as aire_mod
 from incendios import build as build_mod
 from incendios import clean as clean_mod
 from incendios import cluster as cluster_mod
+from incendios import contexto as contexto_mod
 from incendios import merge as merge_mod
 from incendios import trafico as trafico_mod
 from incendios import validate as validate_mod
@@ -246,15 +247,21 @@ def construir_avisos() -> gpd.GeoDataFrame:
     crudo = fixture.read_text(encoding="utf-8")
     filas: list[dict] = []
 
-    # Tres zonas del mapa con tres niveles distintos, para que la leyenda de
-    # colores se pueda comprobar de un vistazo.
+    # Tres zonas con tres niveles distintos, para que la leyenda de colores se
+    # pueda comprobar de un vistazo.
+    #
+    # El naranja se coloca **sobre Sierra de Gata**, que es el incendio con más
+    # focos de la demo. No es cosmética: el cruce aviso ↔ incendio de
+    # `contexto.py` solo se puede comprobar si algún incendio cae dentro de algún
+    # aviso, y con los tres avisos en zonas vacías el bloque de la ficha no
+    # aparecería nunca en el E2E.
     escenarios = [
-        ("naranja", "AT;Temperaturas máximas", 0.0, 0.0),
-        ("rojo", "VI;Viento", 2.5, 1.2),
-        ("amarillo", "TO;Tormentas", -1.5, -2.0),
+        ("naranja", "AT;Temperaturas máximas", 1.25, -4.60, "Sierra de Gata"),
+        ("rojo", "VI;Viento", 2.5, 1.2, None),
+        ("amarillo", "TO;Tormentas", -1.5, -2.0, None),
     ]
 
-    for nivel, fenomeno, dlat, dlon in escenarios:
+    for nivel, fenomeno, dlat, dlon, zona in escenarios:
         texto = (
             crudo.replace("<value>naranja</value>", f"<value>{nivel}</value>")
             .replace("<value>AT;Temperaturas máximas</value>", f"<value>{fenomeno}</value>")
@@ -268,6 +275,12 @@ def construir_avisos() -> gpd.GeoDataFrame:
             fila["geometry"] = shapely_translate(fila["geometry"], xoff=dlon, yoff=dlat)
             fila["id"] = f"{fila['id']}:{nivel}"
             fila["zona_codigo"] = f"{fila['zona_codigo']}{nivel[:1]}"
+            # Si el aviso se ha movido a otra comarca, el nombre se mueve con él:
+            # un aviso desplazado que siga diciendo "La Mancha albaceteña" sobre
+            # Cáceres confundiría al mirar la demo.
+            if zona:
+                fila["zona"] = zona
+                fila["titular"] = fila["titular"].replace("La Mancha albaceteña", zona)
             filas.append(fila)
 
     if not filas:
@@ -422,6 +435,15 @@ def main() -> None:
     todos = pd.concat([por_id, huerfanos])
     incidents["igr_level"] = incidents["id"].map(todos["level"].to_dict())
     incidents["resources_text"] = incidents["id"].map(todos["resources"].to_dict())
+
+    # El contexto se aplica igual que en producción: así la ficha de la demo
+    # ejercita el mismo camino y el E2E tiene qué comprobar.
+    incidents = contexto_mod.enriquecer(
+        incidents,
+        viento=construir_viento(),
+        avisos=construir_avisos(),
+        cortes=construir_trafico(official),
+    )
 
     validate_mod.validate_or_abort(incidents)
 

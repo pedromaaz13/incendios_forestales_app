@@ -74,6 +74,7 @@ frontend enseña los dos números y nunca uno solo.
 | `validate.py` | Completo | Los 8 invariantes de la sección 4.4 |
 | `wind.py` | Completo | 230 nodos · viento, temperatura y humedad |
 | `aemet.py` | Completo | Avisos CAP 1.2 de Meteoalerta |
+| `contexto.py` | Completo | Cruza viento, avisos y cortes con cada incendio |
 | `aire.py` | Completo | CAMS vía Open-Meteo, bandas EAQI oficiales |
 | `trafico.py` | Completo | DGT DATEX II v3.7, feed nacional |
 | `health.py` | Completo | Estado y antigüedad por fuente |
@@ -85,7 +86,7 @@ frontend enseña los dos números y nunca uno solo.
 |---|---|
 | Mapa base y capas | Completo |
 | Agrupación numérica que se dispersa al hacer zoom | Completo |
-| Ficha de incendio | Completo · fuente, superficie, evolución |
+| Ficha de incendio | Completo · fuente, superficie, evolución, condiciones en la zona |
 | Evolutivo diario global | Completo |
 | Evolutivo por incendio | Completo |
 | Filtros (período, confianza, origen, sensor) | Completo |
@@ -185,23 +186,34 @@ Con uno solo ya se puede comprobar la fusión contra datos reales, que hoy solo
 se ejercita con fixtures. Recomendado empezar por **Castilla y León** (`jcyl`):
 su IDE publica GeoServer con WFS, que es un estándar y no una API propia.
 
-### Prioridad 2 · Utilidad práctica sobre lo que ya tenemos
+### ~~Prioridad 2 · Utilidad práctica sobre lo que ya tenemos~~ · HECHO
 
-Ninguna necesita fuentes nuevas. Son cruces de capas que ya están publicadas:
+`contexto.py` cruza tres capas ya publicadas con cada incendio y lo enseña en la
+ficha, bajo «Condiciones en la zona»:
 
-1. **Viento sobre el incendio, en la ficha.** El dato ya está a 230 nodos y el
-   incendio tiene coordenadas: interpolar y decir «viento del NO a 34 km/h, sopla
-   hacia el SE» convierte la capa de viento en una respuesta a la pregunta que
-   de verdad se hace la gente — *¿viene hacia mí?*
-2. **Avisos que solapan con el incendio.** Ya se cruzan geométricamente: «hay
-   aviso naranja de viento vigente en esta zona» es información que ninguna de
-   las dos capas da por separado.
-3. **Cortes de carretera cercanos en la ficha.** La capa ya distingue los
-   declarados por incendio. Falta enseñar los que están junto a *este* incendio.
-4. **Índice de propagación.** Temperatura, humedad y viento ya se publican
-   juntos. Combinarlos es lo que hace comprensible por qué un incendio de 14 ha
-   preocupa más que otro de 40. Cuidado: esto sería **nuestra estimación**, no un
-   dato oficial, y habría que etiquetarlo como tal.
+1. **Viento interpolado en la posición del incendio** — «Del N a 19 km/h, rachas
+   de 31 km/h. Sopla hacia el S». Se publican los dos convenios: el cardinal de
+   origen, que es como se nombra el viento en castellano, y los grados de
+   destino, que es la pregunta útil.
+2. **Aviso de AEMET vigente sobre la zona**, con su titular. Si hay varios gana
+   el más grave, igual que en la fusión.
+3. **Cortes de carretera a menos de 15 km**, distinguiendo los que la DGT declara
+   causados por incendio forestal.
+
+Va en el pipeline y no en el frontend: las capas de contexto se cargan en el
+navegador solo al encender su conmutador, así que calcularlo en el cliente daría
+una ficha que dice cosas distintas según qué botones hayas pulsado antes.
+
+Dos detalles que las pruebas fijan y que se rompen en silencio: el rumbo se
+promedia como **vector** —entre 350° y 10° la media aritmética da 180°, el
+sentido contrario— y un incendio a más de 120 km del nodo más próximo **no
+recibe viento**, porque extrapolarlo sería inventarlo.
+
+**El índice de propagación queda descartado**, no aplazado. Combinar temperatura,
+humedad y viento para afirmar que un incendio se propagará sería una predicción
+nuestra ante alguien que está mirando si arde algo cerca de su casa: si acierta
+no aporta autoridad y si falla el daño es real. Cuando EFFIS vuelva, su
+`fwi_nuts5.fwi` es el índice **oficial** por municipio.
 
 ### Prioridad 3 · Fuentes nuevas que sí aportan
 

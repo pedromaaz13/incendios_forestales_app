@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 import geopandas as gpd
 import pandas as pd
 
+from . import contexto
 from .merge import INCIDENT_SCHEMA
 
 log = logging.getLogger(__name__)
@@ -33,7 +34,14 @@ DISCLAIMER = (
 )
 
 # Campos que viajan al navegador en incidents.geojson.
-INCIDENT_WEB_FIELDS = [*INCIDENT_SCHEMA, "radio_est_km"]
+# El contrato 4.3 más lo derivado y lo cruzado con otras capas. Se publica en
+# esta lista y no en `INCIDENT_SCHEMA` porque el esquema es lo que el validador
+# exige; esto es lo que además resulta útil en la ficha.
+INCIDENT_WEB_FIELDS = [
+    *INCIDENT_SCHEMA,
+    "radio_est_km",
+    *contexto.CAMPOS_CONTEXTO,
+]
 
 
 def _iso(ts) -> str | None:
