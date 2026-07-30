@@ -218,7 +218,56 @@ CV112 = JsonApiSource(
     extract=lambda raw: [],  # TODO
 )
 
-REGISTRY: list[OfficialSource] = [JCYL, INFOCAM, CV112]
+BOMBERS = JsonApiSource(
+    meta=SourceMeta(
+        source_id="bombers",
+        name="Bombers de la Generalitat",
+        region="Cataluña",
+        url="",  # TODO: descubrir
+        # Estimación de partida del anexo técnico, **no medida**. Cataluña varía
+        # según cómo se cargue el parte: unas veces coordenada del incidente,
+        # otras el municipio. Hay que medirlo con 5 incendios reales antes de
+        # darlo por bueno, porque este número gobierna toda la fusión.
+        precision_m=1500,
+        ttl_seconds=300,
+        attribution="Generalitat de Catalunya · Bombers",
+        notes=(
+            "El portal de transparencia catalán publica agregados mensuales sin "
+            "coordenadas (comprobado 28/07/2026): no sirve para tiempo real. "
+            "La URL hay que sacarla del visor d'incendis forestals."
+        ),
+    ),
+    extract=lambda raw: [],  # TODO
+)
+
+INFOCA = ArcGISSource(
+    meta=SourceMeta(
+        source_id="infoca",
+        name="Plan INFOCA",
+        region="Andalucía",
+        url="",  # TODO: descubrir
+        # Misma advertencia que en Bombers: estimación, no medición.
+        precision_m=1500,
+        ttl_seconds=300,
+        attribution="Junta de Andalucía · Plan INFOCA",
+        notes="Publica estado y medios. Andalucía concentra buena parte del verano.",
+    ),
+    field_map={
+        "external_id": "",   # TODO
+        "status": "",        # TODO
+        "municipio": "",     # TODO
+        "provincia": "",     # TODO
+        "resources": "",     # TODO
+        "reported_at": "",   # TODO
+    },
+)
+
+# Las cinco fuentes de RF-P-03. Las cinco tienen la URL vacía **a propósito**:
+# una URL inventada devuelve 404 en silencio y el visor lo enseña como "hoy no
+# hay incendios en esta comunidad", que es el fallo más peligroso de este
+# sistema. Se rellenan con lo que salga de las DevTools sobre el visor
+# autonómico; el procedimiento está en `docs/COMO-CONECTAR-LAS-FUENTES.md`.
+REGISTRY: list[OfficialSource] = [JCYL, INFOCAM, CV112, BOMBERS, INFOCA]
 
 
 def collect_all(only_configured: bool = True) -> pd.DataFrame:

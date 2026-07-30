@@ -235,6 +235,28 @@ población y coordenadas—, encontrada con la sonda. `skipGeometry=true` no es 
 optimización: cada núcleo trae su huella como MultiPolygon y los 37.497 completos
 pasan de 1 GB; sin geometría son 6 MB.
 
+### C3c · La documentación listaba cinco fuentes y el código tenía tres
+
+`COMO-CONECTAR-LAS-FUENTES.md` nombraba cinco comunidades, y los `--id` válidos
+que anunciaba incluían `bombers` e `infoca`. En `adapters.py` solo existían tres
+adaptadores: `jcyl`, `infocam` y `112cv`.
+
+Consecuencias, ninguna visible: si alguien conseguía la URL de INFOCA **no había
+dónde meterla**, y el «cinco endpoints pendientes» que se repitió en varios
+informes era falso — el trabajo real eran tres adaptadores más dos por crear.
+
+Se detectó al comprobar el documento contra el código, no al usarlo.
+
+**Solución.** Los dos adaptadores que faltaban, con URL vacía como los otros
+tres, más dos pruebas: una que fija que el registro cubre las cinco fuentes de
+RF-P-03, y otra que comprueba que cada una declara `precision_m`, `attribution`
+y un `ttl_seconds` de al menos 300 s.
+
+**Y una anotación que faltaba:** ninguna de las cinco tiene `precision_m`
+*medido*. Los valores salen de la tabla orientativa del anexo. El propio
+documento dice «no lo copies, mídelo», y están copiados porque no hay datos con
+los que medir. Ahora la tabla lo advierte.
+
 ### C4 · El índice de riesgo de AEMET no sirve para esto
 
 Responde `404 · No hay datos que satisfagan esos criterios`, y aunque
