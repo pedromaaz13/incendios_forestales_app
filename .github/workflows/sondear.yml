@@ -17,7 +17,7 @@ on:
         description: "Qué sondear"
         type: choice
         default: aemet
-        options: [aemet, firms, candidatas]
+        options: [aemet, firms, explorar]
       url:
         description: "URL concreta a sondear (opcional, tiene prioridad)"
         type: string
