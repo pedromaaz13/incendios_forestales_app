@@ -625,3 +625,20 @@ test('la capa de avisos usa los colores oficiales de AEMET', async ({ page }) =>
   expect(expresion).toContain('#e67e22');
   expect(expresion).toContain('#c0392b');
 });
+
+test('la leyenda de avisos aclara que son de AEMET y sobre el tiempo', async ({ page }) => {
+  // Un aviso naranja de calor no es un incendio: es la condición que lo
+  // favorece. Sin decirlo, la capa se lee al revés — manchas de color sobre el
+  // mapa que parecen zonas quemadas.
+  await abrir(page);
+  const leyenda = page.locator('#leyenda');
+
+  await expect(leyenda).not.toContainText('Avisos oficiales de AEMET');
+
+  await page.locator('[data-capa="avisos"]').click();
+  await page.waitForTimeout(1500);
+
+  await expect(leyenda).toContainText('Avisos oficiales de AEMET');
+  await expect(leyenda).toContainText('tiempo previsto');
+  await expect(leyenda).toContainText('no de que haya');
+});

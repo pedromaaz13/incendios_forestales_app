@@ -779,6 +779,32 @@ function pintarLeyenda(): void {
       Varios incendios juntos: la cifra los cuenta. Acerca para separarlos
     </div>
     ${
+      estado.capas.avisos
+        ? `<p class="leyenda__grupo">Avisos oficiales de AEMET</p>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#f1c40f"></span>
+             Amarillo <span class="leyenda__nota">riesgo para actividades concretas</span>
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#e67e22"></span>
+             Naranja <span class="leyenda__nota">riesgo meteorológico importante</span>
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#c0392b"></span>
+             Rojo <span class="leyenda__nota">riesgo extremo</span>
+           </div>
+           <!-- Se dice de quién es el aviso y a qué se refiere. Son los colores
+                oficiales de Meteoalerta, los mismos de los partes del tiempo, y
+                un aviso naranja de calor no es un incendio: es la condición que
+                lo favorece. Confundirlos sería leer el mapa al revés. -->
+           <p class="leyenda__aviso">
+             Los publica <b>AEMET</b>, no este visor, y avisan del
+             <b>tiempo previsto</b> —calor, viento, tormenta—, no de que haya
+             fuego en esa zona.
+           </p>`
+        : ''
+    }
+    ${
       estado.capas.viento
         ? `<div class="leyenda__fila leyenda__fila--texto">
              Las flechas apuntan <b>hacia donde sopla</b> el viento, no de dónde viene

@@ -533,6 +533,16 @@ body {
   border: 1px dashed var(--e2);
   background: transparent;
 }
+/* Los avisos son zonas, no puntos: la muestra es un rectángulo con borde y
+   relleno tenue, igual que se pintan en el mapa. Una muestra redonda haría
+   pensar en un incendio puntual. */
+.leyenda__muestra--zona {
+  width: 16px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1.5px solid var(--c);
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+}
 
 /* --- lista de incidentes (RF-F-07) ------------------------------------ */
 
