@@ -156,45 +156,83 @@ comprueba si ha vuelto.
 
 ---
 
-## 6 · Lo que falta por desarrollar
+## 6 · Plan y próximos pasos
 
-Por orden de dependencia, no de valor.
+Ordenado por **valor para quien mira el mapa**, no por facilidad. Cada bloque
+dice qué desbloquea y qué lo bloquea.
 
-### ~~Bloque 1 · AEMET~~ · HECHO
+### El agujero que domina todo lo demás
 
-Avisos oficiales de meteorología adversa (Meteoalerta, CAP 1.2) publicados como
-capa, con fixture de regresión y 18 pruebas. Se filtran a nivel amarillo o
-superior y a los siete fenómenos que afectan a un incendio; se descartan los
-expirados.
+Hoy en producción hay **79 incidentes y ninguno con parte oficial**. Todos se
+publican como detección satelital sin confirmar, porque los cinco adaptadores
+autonómicos siguen sin endpoint (C3 en `ERRORES-Y-SOLUCIONES.md`).
 
-Los avisos CAP son mejor fuente que derivar el riesgo de variables crudas: son
-la declaración oficial del organismo competente, no una inferencia nuestra.
+Eso significa que la mitad del producto no está funcionando. La fusión
+oficial ↔ satélite —el módulo más trabajado del repo, con su emparejamiento por
+tolerancia y su desempate por fuente— está probada y no tiene nada que fusionar.
+Sin partes oficiales no hay nombre del incendio, ni estado (activo /
+estabilizado / controlado), ni nivel IGR, ni medios desplegados. Solo puntos
+calientes.
 
-El **índice de riesgo de incendio** queda fuera por dos razones: su endpoint
-responde `404 · No hay datos que satisfagan esos criterios`, y además son mapas
-PNG, no datos vectoriales. Un ráster no se puede consultar por municipio ni
-cruzar con un incendio.
+**Cualquier mejora de visualización rinde menos que conseguir un solo endpoint
+autonómico.** Es el trabajo con más retorno del proyecto y el único que no puedo
+hacer yo: requiere abrir el visor de una comunidad con las DevTools. El
+procedimiento, con capturas, está en `COMO-CONECTAR-LAS-FUENTES.md`.
 
-### ~~Bloque 2 · Temperatura~~ · HECHO
+### Prioridad 1 · Un endpoint autonómico, cualquiera
 
-Temperatura y humedad relativa sobre los mismos 230 puntos, en la misma llamada
-a Open-Meteo que ya se hacía para el viento. Viajan juntas porque se leen
-juntas: 38 ºC con 15 % de humedad y 40 km/h es la combinación que propaga un
-incendio, y ninguno de los tres números por separado lo dice.
+Con uno solo ya se puede comprobar la fusión contra datos reales, que hoy solo
+se ejercita con fixtures. Recomendado empezar por **Castilla y León** (`jcyl`):
+su IDE publica GeoServer con WFS, que es un estándar y no una API propia.
 
-### Bloque 3 · Histórico para el evolutivo
+### Prioridad 2 · Utilidad práctica sobre lo que ya tenemos
 
-Hoy el evolutivo se reconstruye de los focos de las últimas 72 h. Para series
-más largas hace falta acumular. Medido: ~13 KB por día, ~5 MB al año, así que
-**git aguanta perfectamente** y Cloudflare R2 no es urgente. `ingest.yml` ya
-está escrito para R2 y desactivado a la espera del bucket.
+Ninguna necesita fuentes nuevas. Son cruces de capas que ya están publicadas:
 
-### Bloque 4 · Sin empezar
+1. **Viento sobre el incendio, en la ficha.** El dato ya está a 230 nodos y el
+   incendio tiene coordenadas: interpolar y decir «viento del NO a 34 km/h, sopla
+   hacia el SE» convierte la capa de viento en una respuesta a la pregunta que
+   de verdad se hace la gente — *¿viene hacia mí?*
+2. **Avisos que solapan con el incendio.** Ya se cruzan geométricamente: «hay
+   aviso naranja de viento vigente en esta zona» es información que ninguna de
+   las dos capas da por separado.
+3. **Cortes de carretera cercanos en la ficha.** La capa ya distingue los
+   declarados por incendio. Falta enseñar los que están junto a *este* incendio.
+4. **Índice de propagación.** Temperatura, humedad y viento ya se publican
+   juntos. Combinarlos es lo que hace comprensible por qué un incendio de 14 ha
+   preocupa más que otro de 40. Cuidado: esto sería **nuestra estimación**, no un
+   dato oficial, y habría que etiquetarlo como tal.
 
-- **SEVIRI** (RF-P-02) — 15 min de cadencia frente a las pasadas de VIIRS, a
-  cambio de 3 km de píxel
-- **Páginas SEO** (RF-P-13) — una por incendio, indexable
-- **Alertas por correo**
+### Prioridad 3 · Fuentes nuevas que sí aportan
+
+- **SEVIRI** (RF-P-02) · cadencia de **15 minutos** frente a las 2-4 pasadas
+  diarias de VIIRS, a cambio de 3 km de píxel. Hoy la edad del dato llega a
+  5 h; SEVIRI la bajaría a minutos. Es la mejora más grande posible en latencia,
+  que es la razón de existir del proyecto. Sin clave: EUMETSAT LSA-SAF es
+  público.
+- **Rayos** · para tormenta seca, que es causa real de ignición. Blitzortung es
+  abierto; conviene revisar su licencia antes.
+- **Copernicus EMS** · perímetros cartografiados de incendios grandes, mucho más
+  precisos que nuestra envolvente cóncava. Solo se activa en emergencias, así que
+  cubre pocos incendios pero los importantes.
+
+### Prioridad 4 · Alcance, no capacidad
+
+- **Páginas SEO por incendio** (RF-P-13) — quien busca «incendio Sierra de Gata»
+  en Google no llega hoy a nada
+- **Alertas por correo** por zona
+- **Histórico largo** — medido en ~13 KB/día, ~5 MB al año: git aguanta y R2 no
+  es urgente. `ingest.yml` ya está escrito para R2 y desactivado esperando bucket
+
+### Descartado, y por qué
+
+- **Índice de riesgo de AEMET** — 404 y además son mapas PNG, no datos
+  vectoriales. Un ráster no se cruza con un incendio
+- **Derivar el riesgo de tormenta de variables crudas** (CAPE, humedad) — sería
+  nuestra opinión sobre el tiempo, y este proyecto no tiene autoridad
+  meteorológica. Los avisos CAP ya dan la declaración oficial
+- **Framework de componentes en el frontend** — es un mapa con paneles
+- **Base de datos en el camino de lectura** — regla dura
 
 ---
 

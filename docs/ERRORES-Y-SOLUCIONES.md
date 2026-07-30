@@ -13,6 +13,24 @@ Orden: por categoría, y dentro de cada una por gravedad.
 
 ---
 
+## Lo que sigue abierto
+
+Lo demás de este documento está resuelto y se conserva por el patrón, no por la
+tarea. Esto es lo que hay que revisar:
+
+| | Qué | Quién lo desbloquea |
+|---|---|---|
+| **C3** | Cinco endpoints autonómicos sin descubrir: `112cv`, `infocam`, `jcyl` y dos más | Requiere DevTools sobre el visor autonómico · procedimiento en `COMO-CONECTAR-LAS-FUENTES.md` |
+| **C2** | EFFIS caído desde el 27-07-2026 (`Cannot create OCI Handlers`) | Nadie: es su base de datos Oracle. `scripts/vigilar_effis.py` avisa si vuelve |
+
+Ninguno de los dos rompe el visor: un fallo de fuente no tumba el pipeline, y los
+adaptadores sin endpoint aparecen como `disabled` con su motivo en el panel de
+fuentes. La consecuencia real es de cobertura, no de corrección: **hoy no hay
+ningún parte oficial en producción**, así que todos los incendios se publican como
+detección satelital sin confirmar.
+
+---
+
 ## A · Lógica de fusión y del pipeline
 
 ### A1 · Dos partes oficiales se emparejaban con el mismo incendio
@@ -174,6 +192,15 @@ peor fallo que puede cometer este sistema.
 Se desbloquea con las DevTools sobre el visor autonómico. Procedimiento en
 `docs/COMO-CONECTAR-LAS-FUENTES.md`.
 
+### C4 · El índice de riesgo de AEMET no sirve para esto
+
+Responde `404 · No hay datos que satisfagan esos criterios`, y aunque
+respondiera son **mapas PNG**, no datos vectoriales: no se pueden consultar por
+municipio ni cruzar con un incendio.
+
+**Decisión.** No se implementa. Los avisos CAP cubren la necesidad real —viento,
+calor y tormenta declarados oficialmente— y sí son datos.
+
 ---
 
 ## D · Frontend
@@ -258,6 +285,18 @@ Alturas calculadas con `calc()` que no cuadraban en móvil pequeño. El aviso qu
 Dos fallos encadenados: se llamaba antes de que `construirFiltros` hubiera
 creado el DOM, y la comprobación que escribí para verificarlo daba un falso
 positivo, porque `!null?.hidden` es `true`.
+
+### D9 · El polígono de CAP viene en lat,lon y GeoJSON quiere lon,lat
+
+Riesgo detectado al escribir el adaptador, no en producción, porque el modo de
+fallo era conocido: sin invertir el orden, el aviso de Albacete (39 N, 2 O) se
+dibuja en (2 N, 39 E) — Somalia. El mapa **sigue pintando polígonos**, así que
+comprobar que "hay datos" no detecta nada.
+
+**Solución.** La inversión va en el adaptador, no en el frontend, más dos
+pruebas que comprueban los límites geográficos: una unitaria sobre el fixture y
+una E2E sobre la capa montada. Ninguna de las dos afirma que existan datos:
+afirman dónde caen.
 
 ---
 
@@ -356,10 +395,10 @@ clonado, sin clave— que es una situación distinta y legítima.
 
 ### F1 · El scope `workflow` bloqueaba toda edición de Actions
 
-**RESUELTO.** Ni el token del agente ni el cacheado en el llavero de macOS tienen
-el scope `workflow`. GitHub rechaza cualquier push que toque
+**RESUELTO.** Ni el token del agente ni el cacheado en el llavero de macOS tenían
+el scope `workflow`. GitHub rechazaba cualquier push que tocara
 `.github/workflows/`, y como **una push es atómica**, un solo commit con un
-workflow tumba el lote entero.
+workflow tumbaba el lote entero.
 
 Es una protección deliberada de GitHub: sin ella, cualquier integración con
 permiso de escritura podría inyectar un workflow que se ejecuta con todos los
@@ -404,27 +443,6 @@ volvió a rebotar por F1.
 **Solución.** `--no-verify` en el commit de separación.
 
 ---
-
-### C4 · El índice de riesgo de AEMET no sirve para esto
-
-Responde `404 · No hay datos que satisfagan esos criterios`, y aunque
-respondiera son **mapas PNG**, no datos vectoriales: no se pueden consultar por
-municipio ni cruzar con un incendio.
-
-**Decisión.** No se implementa. Los avisos CAP cubren la necesidad real —viento,
-calor y tormenta declarados oficialmente— y sí son datos.
-
-### D9 · El polígono de CAP viene en lat,lon y GeoJSON quiere lon,lat
-
-Riesgo detectado al escribir el adaptador, no en producción, porque el modo de
-fallo era conocido: sin invertir el orden, el aviso de Albacete (39 N, 2 O) se
-dibuja en (2 N, 39 E) — Somalia. El mapa **sigue pintando polígonos**, así que
-comprobar que "hay datos" no detecta nada.
-
-**Solución.** La inversión va en el adaptador, no en el frontend, más dos
-pruebas que comprueban los límites geográficos: una unitaria sobre el fixture y
-una E2E sobre la capa montada. Ninguna de las dos afirma que existan datos:
-afirman dónde caen.
 
 ## Lo que se repite
 
