@@ -402,6 +402,7 @@ const CAPAS: Array<[string, string]> = [
   ['viento', 'viento-flecha'],
   ['aire', 'aire-circulo'],
   ['trafico', 'trafico-corte'],
+  ['avisos', 'avisos-relleno'],
 ];
 
 for (const [conmutador, capa] of CAPAS) {
@@ -575,4 +576,52 @@ test('la leyenda separa intensidad de confirmación', async ({ page }) => {
   await expect(leyenda.locator('.leyenda__grupo')).toHaveCount(2);
   await expect(leyenda).toContainText('calor detectado');
   await expect(leyenda).toContainText('no la gravedad');
+});
+
+test('los avisos de AEMET caen sobre España, no en el Índico', async ({ page }) => {
+  // CAP escribe los polígonos en orden lat,lon y GeoJSON los quiere al revés.
+  // Sin invertir, el mapa sigue pintando polígonos —solo que en Somalia— así
+  // que comprobar "hay datos" no detecta nada. Hay que mirar dónde caen.
+  await abrir(page);
+  await page.locator('[data-capa="avisos"]').click();
+  await page.waitForTimeout(1500);
+
+  const limites = await page.evaluate(() => {
+    const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    const fuente = mapa?.getSource('avisos') as maplibregl.GeoJSONSource | undefined;
+    const datos = (fuente as unknown as { _data?: GeoJSON.FeatureCollection })?._data;
+    if (!datos?.features?.length) return null;
+
+    const coords = datos.features.flatMap((f) =>
+      (f.geometry as GeoJSON.Polygon).coordinates.flat(),
+    );
+    return {
+      oeste: Math.min(...coords.map((c) => c[0])),
+      este: Math.max(...coords.map((c) => c[0])),
+      sur: Math.min(...coords.map((c) => c[1])),
+      norte: Math.max(...coords.map((c) => c[1])),
+    };
+  });
+
+  expect(limites).not.toBeNull();
+  expect(limites!.oeste).toBeGreaterThan(-19);
+  expect(limites!.este).toBeLessThan(5);
+  expect(limites!.sur).toBeGreaterThan(27);
+  expect(limites!.norte).toBeLessThan(44);
+});
+
+test('la capa de avisos usa los colores oficiales de AEMET', async ({ page }) => {
+  // Reinterpretarlos rompería la correspondencia con los partes meteorológicos,
+  // que es justo el valor de publicar la declaración oficial y no una propia.
+  await abrir(page);
+  await page.locator('[data-capa="avisos"]').click();
+  await page.waitForTimeout(1500);
+
+  const expresion = await page.evaluate(() => {
+    const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    return JSON.stringify(mapa?.getPaintProperty('avisos-borde', 'line-color'));
+  });
+
+  expect(expresion).toContain('#e67e22');
+  expect(expresion).toContain('#c0392b');
 });

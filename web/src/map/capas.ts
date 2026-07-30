@@ -553,3 +553,52 @@ export function hacerRuidososLosErrores(mapa: MapaGL): void {
     (window as unknown as { __erroresMapa: string[] }).__erroresMapa.push(mensaje);
   });
 }
+
+// --- Avisos oficiales de AEMET ---------------------------------------------
+
+export const FUENTE_AVISOS = 'avisos';
+export const CAPA_AVISOS = 'avisos-relleno';
+export const CAPA_AVISOS_BORDE = 'avisos-borde';
+
+/**
+ * Color por nivel de Meteoalerta.
+ *
+ * Son los colores oficiales de AEMET, no una paleta nuestra. La gente los
+ * reconoce de los partes meteorológicos, y reinterpretarlos —hacer el naranja
+ * más rojo "porque se ve mejor"— rompería esa correspondencia justo en la capa
+ * cuyo valor es ser la declaración oficial.
+ */
+const COLOR_POR_NIVEL: ExpressionSpecification = [
+  'match',
+  ['get', 'nivel'],
+  'amarillo', '#f1c40f',
+  'naranja', '#e67e22',
+  'rojo', '#c0392b',
+  '#95a5a6',
+];
+
+export function anadirCapasAvisos(mapa: MapaGL): void {
+  // Relleno muy tenue: el aviso cubre comarcas enteras y a plena opacidad
+  // taparía los incendios, que son el objeto del visor. La información va en
+  // el borde; el relleno solo delimita.
+  mapa.addLayer({
+    id: CAPA_AVISOS,
+    type: 'fill',
+    source: FUENTE_AVISOS,
+    paint: {
+      'fill-color': COLOR_POR_NIVEL,
+      'fill-opacity': ['match', ['get', 'nivel'], 'rojo', 0.22, 'naranja', 0.16, 0.1],
+    },
+  });
+
+  mapa.addLayer({
+    id: CAPA_AVISOS_BORDE,
+    type: 'line',
+    source: FUENTE_AVISOS,
+    paint: {
+      'line-color': COLOR_POR_NIVEL,
+      'line-width': ['match', ['get', 'nivel'], 'rojo', 2.5, 'naranja', 2, 1.5],
+      'line-opacity': 0.9,
+    },
+  });
+}

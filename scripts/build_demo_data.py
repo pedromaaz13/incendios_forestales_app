@@ -26,6 +26,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from shapely.affinity import translate as shapely_translate
+
 from incendios import aire as aire_mod
 from incendios import build as build_mod
 from incendios import clean as clean_mod
@@ -34,6 +36,7 @@ from incendios import merge as merge_mod
 from incendios import trafico as trafico_mod
 from incendios import validate as validate_mod
 from incendios import wind as wind_mod
+from incendios.config import CRS_WGS84
 from incendios.health import HealthReport, SourceHealth
 from incendios.pipeline import setup_logging
 
@@ -181,6 +184,11 @@ def construir_viento() -> gpd.GeoDataFrame:
                 "direction_from_deg": round(viene_de, 1),
                 "direction_to_deg": round(wind_mod.to_direction_deg(viene_de), 1),
                 "cardinal_from": wind_mod.cardinal(viene_de),
+                # Más calor cuanto más al sur, que es lo que hace la península
+                # en julio. No es un modelo: es lo justo para que el degradado
+                # de la capa se vea y se pueda comprobar la leyenda.
+                "temp_c": round(float(np.clip(46 - (lat - 36.0) * 1.9 + rng.normal(0, 2), 8, 46)), 1),
+                "humedad_pct": round(float(np.clip(rng.normal(38, 18), 5, 98)), 0),
                 "observed_at": NOW.strftime("%Y-%m-%dT%H:%M"),
             }
         )
@@ -213,6 +221,60 @@ def construir_aire() -> gpd.GeoDataFrame:
             }
         )
     return aire_mod.to_gdf(pd.DataFrame(filas)[aire_mod.AIRE_SCHEMA])
+
+
+def construir_avisos() -> gpd.GeoDataFrame:
+    """Avisos de AEMET sintéticos, a partir del fixture real.
+
+    Se reutiliza `tests/fixtures/aemet_cap.xml` en vez de inventar polígonos:
+    así la demo ejercita el mismo camino de parseo que producción, incluida la
+    inversión lat,lon que es el fallo silencioso de esta fuente. Un polígono
+    dibujado a mano no probaría nada de eso.
+
+    Las fechas se desplazan al momento de la ejecución, porque un aviso con la
+    fecha congelada del fixture aparecería expirado al día siguiente y la demo
+    saldría vacía sin que nadie hubiera tocado nada.
+    """
+    from incendios import aemet as aemet_mod
+
+    fixture = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "aemet_cap.xml"
+    if not fixture.exists():
+        return gpd.GeoDataFrame(
+            columns=[*aemet_mod.CAMPOS, "geometry"], geometry="geometry", crs=CRS_WGS84
+        )
+
+    crudo = fixture.read_text(encoding="utf-8")
+    filas: list[dict] = []
+
+    # Tres zonas del mapa con tres niveles distintos, para que la leyenda de
+    # colores se pueda comprobar de un vistazo.
+    escenarios = [
+        ("naranja", "AT;Temperaturas máximas", 0.0, 0.0),
+        ("rojo", "VI;Viento", 2.5, 1.2),
+        ("amarillo", "TO;Tormentas", -1.5, -2.0),
+    ]
+
+    for nivel, fenomeno, dlat, dlon in escenarios:
+        texto = (
+            crudo.replace("<value>naranja</value>", f"<value>{nivel}</value>")
+            .replace("<value>AT;Temperaturas máximas</value>", f"<value>{fenomeno}</value>")
+            .replace("<expires>2026-07-30T20:59:59+02:00</expires>",
+                     f"<expires>{(NOW + pd.Timedelta(hours=18)).isoformat()}</expires>")
+            .replace("<onset>2026-07-30T13:00:00+02:00</onset>",
+                     f"<onset>{(NOW - pd.Timedelta(hours=2)).isoformat()}</onset>")
+        )
+        for fila in aemet_mod.parse_alerta(texto.encode("utf-8")):
+            # Desplaza la geometría para que los tres avisos no se solapen.
+            fila["geometry"] = shapely_translate(fila["geometry"], xoff=dlon, yoff=dlat)
+            fila["id"] = f"{fila['id']}:{nivel}"
+            fila["zona_codigo"] = f"{fila['zona_codigo']}{nivel[:1]}"
+            filas.append(fila)
+
+    if not filas:
+        return gpd.GeoDataFrame(
+            columns=[*aemet_mod.CAMPOS, "geometry"], geometry="geometry", crs=CRS_WGS84
+        )
+    return gpd.GeoDataFrame(pd.DataFrame(filas), geometry="geometry", crs=CRS_WGS84)
 
 
 def construir_trafico(official: pd.DataFrame) -> gpd.GeoDataFrame:
@@ -402,6 +464,7 @@ def main() -> None:
     _escribe(construir_viento(), DESTINO / "wind.geojson")
     _escribe(construir_aire(), DESTINO / "aire.geojson")
     _escribe(construir_trafico(official), DESTINO / "trafico.geojson")
+    _escribe(construir_avisos(), DESTINO / "avisos.geojson")
     informe.write(DESTINO / "sources.json", now=NOW.to_pydatetime())
     build_mod.write_manifest(manifest, DESTINO / "manifest.json")
 

@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Foto del 29 de julio de 2026. Se actualiza al cerrar cada hito.
+Foto del 30 de julio de 2026. Se actualiza al cerrar cada hito.
 
 Todo lo que dice este documento está comprobado contra el repositorio o contra
 la URL de producción en la fecha de arriba. Donde no hay comprobación posible,
@@ -40,6 +40,7 @@ Recuento real de la última ejecución:
 | Viento | `wind.geojson` | 230 nodos |
 | Calidad del aire | `aire.geojson` | 230 nodos |
 | Carreteras cortadas | `trafico.geojson` | 477 |
+| Avisos oficiales de AEMET | `avisos.geojson` | según boletín |
 | Estado de fuentes | `sources.json` | 6 fuentes |
 | Manifiesto | `manifest.json` | latencias y recuentos |
 
@@ -67,11 +68,12 @@ frontend enseña los dos números y nunca uno solo.
 | `firms.py` | Completo | Ingesta NASA FIRMS · VIIRS ×3 + MODIS |
 | `clean.py` | Completo | Confianza, máscara industrial, dedup espacio-temporal |
 | `cluster.py` | Completo | ST-DBSCAN + perímetros cóncavos |
-| `merge.py` | Completo, **con un bug abierto** | Ver sección 5 |
+| `merge.py` | Completo | Precisión derivada del sensor |
 | `enrich.py` | Completo | Geocoding inverso sobre la capa del IGN (8.220 municipios) |
 | `export.py` | Completo | GeoJSON, PMTiles, Parquet |
 | `validate.py` | Completo | Los 8 invariantes de la sección 4.4 |
-| `wind.py` | Completo | 230 nodos, rejilla regular de 0,75° |
+| `wind.py` | Completo | 230 nodos · viento, temperatura y humedad |
+| `aemet.py` | Completo | Avisos CAP 1.2 de Meteoalerta |
 | `aire.py` | Completo | CAMS vía Open-Meteo, bandas EAQI oficiales |
 | `trafico.py` | Completo | DGT DATEX II v3.7, feed nacional |
 | `health.py` | Completo | Estado y antigüedad por fuente |
@@ -97,8 +99,8 @@ frontend enseña los dos números y nunca uno solo.
 ## 4 · Pruebas
 
 ```
-338 pruebas pasan · 3 saltadas · cobertura 95,28 %   (mínimo exigido: 85 %)
-32 pruebas E2E en Playwright
+361 pruebas pasan · 3 saltadas · cobertura 93,20 %   (mínimo exigido: 85 %)
+62 pruebas E2E en Playwright
 ```
 
 Los 3 `skip` no son deuda escondida. Cada uno cita el requisito que espera:
@@ -113,29 +115,16 @@ rompió se convierte en fixture **antes** de arreglar el código.
 
 ## 5 · Lo que falta por arreglar
 
-### 5.1 · BUG ABIERTO — la precisión miente en los incendios que solo vio MODIS
+### 5.1 · ~~La precisión miente en los incendios que solo vio MODIS~~ · RESUELTO
 
-**Gravedad: alta.** Afecta al 18 % de los incendios publicados.
+`merge.py` asignaba 375 m —el píxel de VIIRS— a todos los incendios satelitales.
+El de MODIS es 1 km, así que 8 de 44 incidentes publicaban una incertidumbre
+casi tres veces menor que la real, y sobre ese radio la ficha afirma que «el
+incendio puede estar en cualquier punto de su interior».
 
-`merge.py:242` asigna 375 m de precisión a todos los incendios satelitales:
-
-```python
-fires["position_precision_m"] = float(VIIRS_PIXEL_PRECISION_M)
-```
-
-375 m es el píxel de VIIRS. El de MODIS es 1 km. En la última comprobación,
-**8 de 44 incendios** los había visto solo MODIS y publicaban 375 m.
-
-Por qué importa: ese número es el radio del anillo punteado del mapa, y la
-ficha afirma que *«el incendio puede estar en cualquier punto de su interior»*.
-Para esos ocho eso es falso — puede estar fuera. Es exactamente la falsa
-precisión que el aviso de dominio prohíbe.
-
-**Arreglo previsto:** derivar la precisión del mejor sensor que vio cada
-incendio, usando el campo `sensors` que ya se publica. VIIRS presente → 375 m;
-solo MODIS → 1.000 m. Las constantes se mueven a `config.py`, donde debían
-haber estado. Toca `merge.py`, así que exige `test_invariants.py` más un test
-nuevo que fije el caso.
+Resuelto derivando la precisión del **mejor** sensor que vio cada incendio, a
+partir del campo `sensors`. Tres pruebas de regresión fijan los casos VIIRS,
+MODIS y mixto; se verificó que la de MODIS falla sin el arreglo.
 
 ### 5.2 · El scope `workflow` del token bloquea Actions
 
@@ -183,24 +172,27 @@ comprueba si ha vuelto.
 
 Por orden de dependencia, no de valor.
 
-### Bloque 1 · AEMET *(bloqueado por 5.2)*
+### ~~Bloque 1 · AEMET~~ · HECHO
 
-La clave ya está en Secrets. En cuanto un workflow pueda leerla:
+Avisos oficiales de meteorología adversa (Meteoalerta, CAP 1.2) publicados como
+capa, con fixture de regresión y 18 pruebas. Se filtran a nivel amarillo o
+superior y a los siete fenómenos que afectan a un incendio; se descartan los
+expirados.
 
-1. Sondear y volcar el esquema real de los dos endpoints
-2. Fixture de regresión de cada uno, **antes** de escribir el adaptador
-3. `src/incendios/aemet.py` con los adaptadores y sus pruebas
-4. Capa de avisos oficiales de meteorología adversa (CAP): tormenta, viento, calor
-5. Capa del índice oficial de riesgo de incendio
+Los avisos CAP son mejor fuente que derivar el riesgo de variables crudas: son
+la declaración oficial del organismo competente, no una inferencia nuestra.
 
-Los avisos CAP son mejor fuente que derivar el riesgo de tormenta de variables
-crudas: son la declaración oficial del organismo competente, no una inferencia
-nuestra.
+El **índice de riesgo de incendio** queda fuera por dos razones: su endpoint
+responde `404 · No hay datos que satisfagan esos criterios`, y además son mapas
+PNG, no datos vectoriales. Un ráster no se puede consultar por municipio ni
+cruzar con un incendio.
 
-### Bloque 2 · Temperatura
+### ~~Bloque 2 · Temperatura~~ · HECHO
 
-Sobre la misma rejilla de 230 puntos que ya usan viento y aire, y en la misma
-llamada. No añade fuente ni latencia nuevas.
+Temperatura y humedad relativa sobre los mismos 230 puntos, en la misma llamada
+a Open-Meteo que ya se hacía para el viento. Viajan juntas porque se leen
+juntas: 38 ºC con 15 % de humedad y 40 km/h es la combinación que propaga un
+incendio, y ninguno de los tres números por separado lo dice.
 
 ### Bloque 3 · Histórico para el evolutivo
 

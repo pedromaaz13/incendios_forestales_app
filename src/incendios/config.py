@@ -108,6 +108,7 @@ class Outputs:
     wind_geojson: Path = OUT / "wind.geojson"
     aire_geojson: Path = OUT / "aire.geojson"
     trafico_geojson: Path = OUT / "trafico.geojson"
+    avisos_geojson: Path = OUT / "avisos.geojson"
     # Contadores de ejecuciones anteriores. No se publica: es estado interno
     # contra el que se compara para detectar un vaciado sospechoso (RF-P-11).
     runs_json: Path = HISTORY / "runs.json"

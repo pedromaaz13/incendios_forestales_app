@@ -80,6 +80,15 @@ WIND_SCHEMA = [
     "direction_from_deg",
     "direction_to_deg",
     "cardinal_from",
+    # Temperatura y humedad relativa. Viajan con el viento porque vienen en la
+    # misma respuesta de la misma llamada: pedirlas aparte sería una segunda
+    # petición a la misma API para el mismo instante y los mismos 230 puntos.
+    #
+    # Y se leen juntas: 38 ºC con 15 % de humedad y viento de 40 km/h es la
+    # combinación que propaga un incendio, y ninguno de los tres números por
+    # separado lo dice.
+    "temp_c",
+    "humedad_pct",
     "observed_at",
 ]
 
@@ -128,6 +137,8 @@ def parse(payload: list[dict] | dict, points=GRID_POINTS) -> pd.DataFrame:
                 "direction_from_deg": float(direccion),
                 "direction_to_deg": to_direction_deg(direccion),
                 "cardinal_from": cardinal(direccion),
+                "temp_c": _num(actual.get("temperature_2m")),
+                "humedad_pct": _num(actual.get("relative_humidity_2m")),
                 "observed_at": actual.get("time"),
             }
         )
@@ -160,7 +171,10 @@ def fetch(client: httpx.Client | None = None, points=GRID_POINTS) -> gpd.GeoData
         params = {
             "latitude": ",".join(f"{p[1]}" for p in points),
             "longitude": ",".join(f"{p[2]}" for p in points),
-            "current": "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
+            "current": (
+                "wind_speed_10m,wind_direction_10m,wind_gusts_10m,"
+                "temperature_2m,relative_humidity_2m"
+            ),
             "wind_speed_unit": "kmh",
             "timezone": "UTC",
         }

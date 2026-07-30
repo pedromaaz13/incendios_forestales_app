@@ -9,6 +9,7 @@ en la dirección contraria a la real, y aquí eso no es un detalle estético.
 from __future__ import annotations
 
 import httpx
+import pandas as pd
 import pytest
 
 from incendios import wind
@@ -214,3 +215,51 @@ def test_grid_points_are_inside_spain():
     for nombre, lat, lon in wind.GRID_POINTS:
         assert 27 <= lat <= 44, nombre
         assert -19 <= lon <= 5, nombre
+
+
+# --- Temperatura y humedad --------------------------------------------------
+
+
+def test_publica_temperatura_y_humedad():
+    """Van con el viento porque llegan en la misma respuesta.
+
+    38 ºC con 15 % de humedad y 40 km/h de viento es la combinación que propaga
+    un incendio, y ninguno de los tres números por separado lo dice.
+    """
+    payload = [{
+        "latitude": 40.0,
+        "longitude": -3.0,
+        "current": {
+            "wind_speed_10m": 40.0,
+            "wind_direction_10m": 270.0,
+            "wind_gusts_10m": 65.0,
+            "temperature_2m": 38.4,
+            "relative_humidity_2m": 15.0,
+            "time": "2026-07-29T14:00",
+        },
+    }]
+    fila = wind.parse(payload, points=[("prueba", 40.0, -3.0)]).iloc[0]
+
+    assert fila["temp_c"] == 38.4
+    assert fila["humedad_pct"] == 15.0
+
+
+def test_sin_temperatura_el_punto_sigue_siendo_valido():
+    """Open-Meteo puede omitir una variable sin omitir el bloque entero.
+
+    Descartar el punto por eso perdería el viento, que es el dato principal de
+    esta capa. Se publica nulo, que el frontend sabe no pintar.
+    """
+    payload = [{
+        "latitude": 40.0,
+        "longitude": -3.0,
+        "current": {
+            "wind_speed_10m": 20.0,
+            "wind_direction_10m": 180.0,
+            "time": "2026-07-29T14:00",
+        },
+    }]
+    fila = wind.parse(payload, points=[("prueba", 40.0, -3.0)]).iloc[0]
+
+    assert fila["direction_from_deg"] == 180.0
+    assert pd.isna(fila["temp_c"])
