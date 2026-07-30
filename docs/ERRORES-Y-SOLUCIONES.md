@@ -20,14 +20,15 @@ tarea. Esto es lo que hay que revisar:
 
 | | Qué | Quién lo desbloquea |
 |---|---|---|
-| **C3** | Cinco endpoints autonómicos sin descubrir: `112cv`, `infocam`, `jcyl` y dos más | Requiere DevTools sobre el visor autonómico · procedimiento en `COMO-CONECTAR-LAS-FUENTES.md` |
+| **C3** | Dos endpoints autonómicos sin descubrir: `112cv` e `infocam` | Requiere DevTools sobre el visor autonómico · procedimiento en `COMO-CONECTAR-LAS-FUENTES.md` |
+| **C5** | `bombers` e `infoca` sin feed público en tiempo real conocido | Nadie por ahora: la evidencia apunta a que no existe |
 | **C2** | EFFIS caído desde el 27-07-2026 (`Cannot create OCI Handlers`) | Nadie: es su base de datos Oracle. `scripts/vigilar_effis.py` avisa si vuelve |
 
-Ninguno de los dos rompe el visor: un fallo de fuente no tumba el pipeline, y los
+Ninguno rompe el visor: un fallo de fuente no tumba el pipeline, y los
 adaptadores sin endpoint aparecen como `disabled` con su motivo en el panel de
 fuentes. La consecuencia real es de cobertura, no de corrección: **hoy no hay
-ningún parte oficial en producción**, así que todos los incendios se publican como
-detección satelital sin confirmar.
+ningún parte oficial de esas comunidades**. Castilla y León sí publica: 23 de 76
+incidentes llevan estado declarado, nivel IGR y medios.
 
 ---
 
@@ -242,7 +243,14 @@ fuente no tumba la ejecución.
 
 ### C3 · Cinco endpoints autonómicos sin descubrir
 
-**ABIERTO.** `112cv`, `infocam`, `jcyl` y dos más siguen con la URL vacía.
+**PARCIALMENTE ABIERTO.** `jcyl` se descubrió el 30-07-2026 y publica 26 partes
+oficiales. Quedan `112cv` e `infocam`.
+
+`bombers` e `infoca` se dan por **no disponibles**, no por pendientes: el feed
+del visor de referencia no los lleva —tiene incendios en Andalucía y Cataluña,
+pero solo detectados por satélite— y el portal de datos abiertos catalán publica
+agregados mensuales sin coordenadas. Probablemente no existe un feed público en
+tiempo real de esas dos comunidades.
 
 Esto **no es un error, es una regla**. Los adaptadores están vacíos a propósito.
 Poner una URL plausible sin verificarla produce un 404 silencioso que el visor
