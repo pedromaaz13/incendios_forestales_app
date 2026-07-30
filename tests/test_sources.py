@@ -344,6 +344,10 @@ def test_json_api_source_with_empty_extraction():
 def test_registry_sources_are_disabled_until_configured():
     """Regla dura de CLAUDE.md: los adaptadores tienen la URL vacía a propósito.
 
+    JCyL ya no está en la lista: su endpoint se descubrió el 30-07-2026 con
+    DevTools sobre INFORCYL y está verificado contra un fixture real. Las otras
+    cuatro siguen vacías, y lo estarán hasta que alguien repita el proceso.
+
     Una URL inventada devuelve 404 en silencio y eso se lee como 'hoy no hay
     incendios'. Este test se pondrá rojo el día que alguien pegue un endpoint
     sin actualizar la documentación de descubrimiento, que es justo cuando hay
@@ -352,15 +356,24 @@ def test_registry_sources_are_disabled_until_configured():
     from incendios.sources.adapters import REGISTRY
 
     sin_configurar = [s.meta.source_id for s in REGISTRY if not s.meta.url]
-    assert sorted(sin_configurar) == [
-        "112cv", "bombers", "infoca", "infocam", "jcyl",
-    ]
+    assert sorted(sin_configurar) == ["112cv", "bombers", "infoca", "infocam"]
 
 
-def test_collect_all_skips_unconfigured_sources():
-    from incendios.sources.adapters import collect_all
+def test_collect_all_skips_unconfigured_sources(monkeypatch):
+    """Las fuentes sin URL se omiten sin intentar la petición.
 
-    df = collect_all(only_configured=True)
+    Se sustituye el registro por las cuatro que siguen sin endpoint. Antes este
+    test llamaba al registro real, y en cuanto JCyL tuvo URL **empezó a hacer una
+    petición de verdad a servicios.jcyl.es** desde la suite. La suite corre sin
+    red por diseño: toda fuente externa tiene su fixture.
+    """
+    from incendios.sources import adapters
+
+    sin_url = [s for s in adapters.REGISTRY if not s.meta.url]
+    assert sin_url, "el test pierde sentido si todas las fuentes están configuradas"
+    monkeypatch.setattr(adapters, "REGISTRY", sin_url)
+
+    df = adapters.collect_all(only_configured=True)
 
     assert df.empty
     assert list(df.columns) == OFFICIAL_SCHEMA

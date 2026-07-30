@@ -1,0 +1,262 @@
+{
+  "listaEmergencias": [
+    {
+      "comarca": {
+        "codigo": 532,
+        "nombre": "El Tiemblo"
+      },
+      "cpm": "AV",
+      "emergencia_cpm": 5,
+      "emergencia_num1": 152,
+      "emergencia_num2": 26,
+      "estado": {
+        "CODIGO": 1,
+        "COLOR": "red",
+        "COLOR_FONDO": "pink",
+        "NOMBRE": "Activo"
+      },
+      "falsa_alarma": false,
+      "fecha_inicio": "22/07/2026 13:02:00",
+      "fecha_nivel_maximo": "22/07/2026 22:32:32",
+      "huso": 30,
+      "latitud": 4468904.0,
+      "localidad": {
+        "id": 1701,
+        "municipio": {
+          "id": 41,
+          "nombre": "BURGOHONDO"
+        },
+        "nombre": "BURGOHONDO",
+        "nombre_corto": "BURGOHONDO"
+      },
+      "longitud": 352454.0,
+      "medios": [
+        {
+          "ACTUANDO": true,
+          "CODIGO": -1,
+          "NOMBRE": "PMA-SA",
+          "PROVINCIA": {
+            "id": 0
+          },
+          "TIPO": {
+            "CATEGORIA": "Otros",
+            "CODIGO": 8,
+            "NOMBRE": "Otros"
+          }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": -1,
+          "NOMBRE": "BOMBEROS AYTO DE AVILA",
+          "PROVINCIA": {
+            "id": 0
+          },
+          "TIPO": {
+            "CATEGORIA": "Otros",
+            "CODIGO": 8,
+            "NOMBRE": "Otros"
+          }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": 1,
+          "IMEI": "860264059492026",
+          "NOMBRE": "C2Y-01.1",
+          "PROVINCIA": {
+            "id": 5,
+            "nombre": "AVILA"
+          },
+          "TIPO": {
+            "CATEGORIA": "Terrestre",
+            "CODIGO": 3,
+            "NOMBRE": "Autobombas"
+          }
+        },
+        {
+          "ACTUANDO": false,
+          "CODIGO": -1,
+          "NOMBRE": "AB JCYL AV 1",
+          "PROVINCIA": {
+            "id": 0
+          },
+          "TIPO": {
+            "CATEGORIA": "Otros",
+            "CODIGO": 8,
+            "NOMBRE": "Otros"
+          }
+        }
+      ],
+      "municipio": {
+        "id": 41,
+        "nombre": "BURGOHONDO"
+      },
+      "nivelIgr": true,
+      "nivel_infocal": 2,
+      "nivel_maximo": 2,
+      "provincia": {
+        "id": 5,
+        "nombre": "AVILA"
+      }
+    },
+    {
+      "comarca": {
+        "codigo": 931,
+        "nombre": "Burgos"
+      },
+      "cpm": "BU",
+      "emergencia_cpm": 9,
+      "emergencia_num1": 304,
+      "emergencia_num2": 26,
+      "estado": {
+        "CODIGO": 2,
+        "COLOR": "blue",
+        "COLOR_FONDO": "#BCFFEF",
+        "NOMBRE": "Controlado"
+      },
+      "falsa_alarma": false,
+      "fecha_control": "29/07/2026 20:28:00",
+      "fecha_inicio": "29/07/2026 18:37:00",
+      "huso": 30,
+      "latitud": 4664902.0,
+      "localidad": {
+        "id": 1701,
+        "municipio": {
+          "id": 119,
+          "nombre": "CUEVAS DE SAN CLEMENTE"
+        },
+        "nombre": "CUEVAS DE SAN CLEMENTE",
+        "nombre_corto": "CUEVAS DE SAN C"
+      },
+      "longitud": 451197.0,
+      "medios": [
+        {
+          "ACTUANDO": true,
+          "CODIGO": 1674,
+          "IMEI": "-",
+          "NOMBRE": "COLIO SAÍZ, CARLOS",
+          "PROVINCIA": {
+            "id": 9,
+            "nombre": "BURGOS"
+          },
+          "TIPO": {
+            "CATEGORIA": "Personal",
+            "CODIGO": 5,
+            "NOMBRE": "A.M. / Celador"
+          }
+        },
+        {
+          "ACTUANDO": false,
+          "CODIGO": -1,
+          "NOMBRE": "BB Diputación",
+          "PROVINCIA": {
+            "id": 0
+          },
+          "TIPO": {
+            "CATEGORIA": "Otros",
+            "CODIGO": 8,
+            "NOMBRE": "Otros"
+          }
+        }
+      ],
+      "municipio": {
+        "id": 119,
+        "nombre": "CUEVAS DE SAN CLEMENTE"
+      },
+      "nivelIgr": false,
+      "nivel_infocal": 0,
+      "nivel_maximo": 0,
+      "provincia": {
+        "id": 9,
+        "nombre": "BURGOS"
+      },
+      "sup_arbolado": 0.743
+    },
+    {
+      "comarca": {
+        "codigo": 952,
+        "nombre": "Covarrubias"
+      },
+      "cpm": "BU",
+      "emergencia_cpm": 9,
+      "emergencia_num1": 306,
+      "emergencia_num2": 26,
+      "estado": {
+        "CODIGO": 4,
+        "COLOR": "grey",
+        "COLOR_FONDO": "black",
+        "NOMBRE": "Falsa Alarma"
+      },
+      "falsa_alarma": true,
+      "fecha_inicio": "30/07/2026 10:48:00",
+      "huso": 30,
+      "latitud": 4646307.0,
+      "localidad": {
+        "id": 4301,
+        "municipio": {
+          "id": 358,
+          "nombre": "SANTO DOMINGO DE SILOS"
+        },
+        "nombre": "SANTO DOMINGO DE SILOS",
+        "nombre_corto": "SANTO DOMINGO D"
+      },
+      "longitud": 464382.0,
+      "medios": [
+        {
+          "ACTUANDO": true,
+          "CODIGO": 615,
+          "IMEI": "-",
+          "NOMBRE": "VICENTE VICENTE, RAFAEL",
+          "PROVINCIA": {
+            "id": 9,
+            "nombre": "BURGOS"
+          },
+          "TIPO": {
+            "CATEGORIA": "Personal",
+            "CODIGO": 5,
+            "NOMBRE": "A.M. / Celador"
+          }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": 1674,
+          "IMEI": "-",
+          "NOMBRE": "COLIO SAÍZ, CARLOS",
+          "PROVINCIA": {
+            "id": 9,
+            "nombre": "BURGOS"
+          },
+          "TIPO": {
+            "CATEGORIA": "Personal",
+            "CODIGO": 5,
+            "NOMBRE": "A.M. / Celador"
+          }
+        },
+        {
+          "ACTUANDO": true,
+          "CODIGO": 9403,
+          "NOMBRE": "PARDO RENES, RODRIGO",
+          "PROVINCIA": {
+            "id": 9,
+            "nombre": "BURGOS"
+          },
+          "TIPO": {
+            "CATEGORIA": "Personal",
+            "CODIGO": 5,
+            "NOMBRE": "A.M. / Celador"
+          }
+        }
+      ],
+      "municipio": {
+        "id": 358,
+        "nombre": "SANTO DOMINGO DE SILOS"
+      },
+      "nivelIgr": false,
+      "nivel_infocal": 0,
+      "nivel_maximo": 0,
+      "provincia": {
+        "id": 9,
+        "nombre": "BURGOS"
+      }
+    }
+  ]
+}

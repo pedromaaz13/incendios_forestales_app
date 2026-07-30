@@ -83,6 +83,25 @@ def firms_simulado(monkeypatch):
     return entrada
 
 
+@pytest.fixture(autouse=True)
+def _sin_fuentes_por_red(monkeypatch):
+    """Deja en el registro solo las fuentes que aún no tienen endpoint.
+
+    Desde que JCyL tiene URL (30-07-2026), ejecutar el pipeline aquí haría una
+    petición real a `servicios.jcyl.es`. La suite corre **sin red** por diseño:
+    toda fuente externa tiene su fixture, y el de JCyL se ejercita en
+    `test_jcyl.py` contra la respuesta real capturada.
+
+    `autouse` a propósito: cualquier prueba nueva de este módulo que llame a
+    `pipeline.run` hereda el aislamiento sin tener que acordarse.
+    """
+    from incendios.sources import adapters
+
+    monkeypatch.setattr(
+        adapters, "REGISTRY", [s for s in adapters.REGISTRY if not s.meta.url]
+    )
+
+
 def _ejecutar(salidas) -> dict:
     # Todas las capas de contexto salen por red y esta prueba no la toca.
     return pipeline.run(
@@ -178,13 +197,17 @@ def test_industrial_mask_removes_the_refinery(firms_simulado, salidas):
 
 
 def test_sources_report_marks_undiscovered_endpoints_as_disabled(firms_simulado, salidas):
-    """Las cinco autonómicas siguen sin endpoint. `disabled`, nunca "0 incendios"."""
+    """Una fuente sin endpoint sale `disabled`, nunca como "0 incendios".
+
+    Es la regla dura: un hueco explícito es honesto; un cero silencioso se lee
+    como «hoy no arde nada en esa comunidad».
+    """
     _ejecutar(salidas)
     salud = json.loads(salidas.sources_json.read_text(encoding="utf-8"))
 
     por_id = {s["id"]: s for s in salud["sources"]}
-    assert por_id["jcyl"]["status"] == "disabled"
     assert por_id["infocam"]["status"] == "disabled"
+    assert por_id["112cv"]["status"] == "disabled"
     assert por_id["firms_viirs"]["status"] == "ok"
     assert por_id["firms_viirs"]["records"] > 0
 
