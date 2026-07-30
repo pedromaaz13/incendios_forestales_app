@@ -75,8 +75,8 @@ del manifiesto sin decir por qué.
 
 **RESUELTO.**
 
-`merge.py:242` asigna 375 m —el píxel de VIIRS— a todos los incendios
-satelitales. El de MODIS es 1 km. 8 de 44 incendios en producción publican una
+`merge.py` asignaba 375 m —el píxel de VIIRS— a todos los incendios satelitales.
+El de MODIS es 1 km, así que 8 de 44 incendios en producción publicaban una
 incertidumbre casi tres veces menor que la real, y la ficha afirma sobre ese
 radio que «el incendio puede estar en cualquier punto de su interior».
 
@@ -307,9 +307,9 @@ de un JSON es una suposición que nadie ha escrito en ningún contrato.
 
 ## F · Despliegue e infraestructura
 
-### F1 · El scope `workflow` bloquea toda edición de Actions
+### F1 · El scope `workflow` bloqueaba toda edición de Actions
 
-**ABIERTO.** Ni el token del agente ni el cacheado en el llavero de macOS tienen
+**RESUELTO.** Ni el token del agente ni el cacheado en el llavero de macOS tienen
 el scope `workflow`. GitHub rechaza cualquier push que toque
 `.github/workflows/`, y como **una push es atómica**, un solo commit con un
 workflow tumba el lote entero.
@@ -318,15 +318,19 @@ Es una protección deliberada de GitHub: sin ella, cualquier integración con
 permiso de escritura podría inyectar un workflow que se ejecuta con todos los
 secretos del repositorio.
 
-**Solución parcial.** Los commits se separan: lo que no toca workflows sube, y
-los ficheros de workflow quedan pendientes en el árbol de trabajo.
+**Solución provisional mientras duró.** Los commits se separaban: lo que no
+tocaba workflows subía, y los ficheros de workflow quedaban pendientes en el
+árbol de trabajo.
 
-**Solución completa**, pendiente de ejecutar una vez en local:
+**Solución definitiva**, ejecutada una vez en local:
 
 ```
 gh auth refresh -h github.com -s workflow
 gh auth setup-git
 ```
+
+El segundo comando es la mitad que se olvida: sin él, git sigue tirando del
+token del llavero y la push vuelve a rebotar aunque `gh` ya tenga el scope.
 
 ### F2 · La clave de AEMET se conectó a un workflow desactivado
 
@@ -336,7 +340,7 @@ bucket de Cloudflare R2. El que corre cada 30 minutos es `publicar.yml`.
 Habría quedado como configurada sin ejecutarse nunca. Se detectó al leer la
 cabecera del fichero, que lo dice en la primera línea.
 
-**Solución.** La clave va en `publicar.yml`. Pendiente de F1 para poder subirla.
+**Solución.** La clave va en `publicar.yml`. Ya en producción.
 
 ### F3 · Un `git reset --hard` borró un commit sin subir
 

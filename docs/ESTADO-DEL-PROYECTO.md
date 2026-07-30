@@ -126,28 +126,16 @@ Resuelto derivando la precisión del **mejor** sensor que vio cada incendio, a
 partir del campo `sensors`. Tres pruebas de regresión fijan los casos VIIRS,
 MODIS y mixto; se verificó que la de MODIS falla sin el arreglo.
 
-### 5.2 · El scope `workflow` del token bloquea Actions
+### 5.2 · ~~El scope `workflow` del token bloquea Actions~~ · RESUELTO
 
-Ni el token del agente ni el cacheado en el llavero de macOS tienen el scope
-`workflow`, así que **ningún fichero de `.github/workflows/` puede subirse**.
-Y una push es atómica: un solo commit que toque un workflow tumba el lote
-entero.
+Ni el token del agente ni el cacheado en el llavero de macOS tenían el scope
+`workflow`, así que ningún fichero de `.github/workflows/` podía subirse. Y una
+push es atómica: un solo commit que tocara un workflow tumbaba el lote entero.
 
-Consecuencia directa: la clave de AEMET está correctamente guardada en Secrets
-del repositorio, pero ningún workflow puede leerla todavía.
-
-Pendiente de ejecutar en local, una vez:
-
-```
-gh auth refresh -h github.com -s workflow
-gh auth setup-git
-```
-
-Ficheros esperando esa push:
-
-- `.github/workflows/sondear.yml` (nuevo) — lanza las sondas dentro de Actions,
-  que es donde viven las claves
-- `.github/workflows/publicar.yml` — añadir `AEMET_API_KEY` al bloque `env`
+Resuelto con `gh auth refresh -h github.com -s workflow` más
+`gh auth setup-git`, que hace que git use el token de `gh` en lugar del que
+estaba cacheado en el llavero. `sondear.yml` está en `main` y `publicar.yml` ya
+pasa `AEMET_API_KEY` al pipeline.
 
 ### 5.3 · Cinco endpoints autonómicos sin descubrir
 
