@@ -304,6 +304,13 @@ def comprobar_firms() -> None:
         print(f"  ✕ Sin conexión con FIRMS: {exc}")
         return
 
+    # Las cabeceras de respuesta, porque ahí es donde FIRMS declara la cuota y
+    # asumir el nombre de una cabecera es cómo se publica un campo siempre nulo.
+    print("  Cabeceras de la respuesta:")
+    for k, v in sorted(r.headers.items()):
+        if k.lower().startswith(("x-", "remaining", "ratelimit", "rate-", "quota")):
+            print(f"      {k}: {v}")
+
     texto = r.text.strip()
     primera = texto.splitlines()[0] if texto else ""
 
