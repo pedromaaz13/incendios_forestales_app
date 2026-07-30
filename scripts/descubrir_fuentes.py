@@ -65,6 +65,38 @@ TIMEOUT = 25.0
 # incendios activos. El script dice cuáles responden; decidir cuál sirve es
 # trabajo humano, mirando lo que devuelve.
 CANDIDATAS: dict[str, list[str]] = {
+    # --- Detección: llenar el 58 % de tiempo ciego ---------------------------
+    #
+    # Medido el 30-07-2026: de las últimas 24 h, 14 sin ninguna detección, con
+    # una racha ciega de 6 h seguidas. VIIRS y MODIS van en órbita polar y solo
+    # ven España al pasar por encima.
+    #
+    # Sentinel-3 SLSTR es el mejor candidato: dos satélites (3A y 3B), ~2 pasadas
+    # diarias cada uno, y producto de fuego a **1 km** — la misma sensibilidad
+    # que MODIS, no los 3 km de SEVIRI. Con una mediana de 28 ha por incendio,
+    # SEVIRI apenas vería ninguno de los que tenemos; Sentinel-3 sí.
+    #
+    # Estas URL son las **raíces documentadas de los catálogos**, no endpoints de
+    # producto: sirven para descubrir qué hay, no para ingerir. Que respondan no
+    # significa que sirvan, y hay que mirar qué devuelven.
+    "sentinel3": [
+        "https://catalogue.dataspace.copernicus.eu/resto/api/collections/Sentinel3/search.json?maxRecords=1",
+        "https://catalogue.dataspace.copernicus.eu/stac",
+    ],
+    # --- Distancia al núcleo de población más cercano ------------------------
+    #
+    # Es la pregunta literal del usuario —¿arde algo cerca de mi casa?— y hoy no
+    # se puede contestar: la capa que tenemos son **polígonos municipales**, y
+    # usar su centroide como "el pueblo" daría un error típico de 3,3 km y de
+    # hasta 23,6 km en el municipio más grande.
+    #
+    # Hace falta una capa de **entidades o núcleos de población** (puntos). El
+    # CNIG la publica dentro de la BTN, y el IGN tiene servicios INSPIRE de
+    # nombres geográficos.
+    "nucleos_poblacion": [
+        "https://www.ign.es/wfs/nomenclator-geografico?service=WFS&request=GetCapabilities",
+        "https://api-features.ign.es/collections",
+    ],
     "jcyl": [
         "https://idecyl.jcyl.es/geoserver/incendios/wfs?service=WFS&request=GetCapabilities",
         "https://idecyl.jcyl.es/geoserver/wfs?service=WFS&request=GetCapabilities",

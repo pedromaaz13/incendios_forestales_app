@@ -27,7 +27,10 @@ def _incidente(**overrides) -> dict:
         "satellite_confirmed": True,
         "official_confirmed": False,
         "confirmed_by": "",
-        "status": "activo",
+        # Sin parte oficial no hay estado: una detección satelital dice que hubo
+        # calor, no que el fuego siga vivo (invariante 9).
+        "status": None,
+        "status_origen": "satelite",
         "municipio": "Burgohondo",
         "provincia": "Ávila",
         "n_hotspots": 12,
@@ -267,3 +270,41 @@ def test_abort_reports_every_violation_not_just_the_first():
     violaciones = validate.check(corrupto)
 
     assert {v.invariant for v in violaciones} >= {1, 6, 8}
+
+
+# --- Invariante 9 · ningún estado sin quien lo afirme -----------------------
+
+
+def test_invariant_9_estado_sin_parte_oficial_aborta():
+    """El fallo de más alcance que ha tenido este proyecto.
+
+    Los 79 incendios de producción se publicaban con `status = "activo"` y la
+    interfaz los pintaba en rojo con esa palabra, sin que ningún servicio de
+    extinción lo hubiera declarado. Afectaba al 100 % de los datos.
+    """
+    incidents = _gdf(_incidente(status="activo", official_confirmed=False))
+
+    violaciones = validate.check(incidents)
+
+    assert any(v.invariant == 9 for v in violaciones)
+
+
+def test_invariant_9_con_parte_oficial_el_estado_es_valido():
+    incidents = _gdf(
+        _incidente(status="controlado", official_confirmed=True, origin="ambos")
+    )
+
+    assert not [v for v in validate.check(incidents) if v.invariant == 9]
+
+
+def test_invariant_9_el_nulo_es_valido_y_no_dispara_el_vocabulario():
+    """Nulo significa «nadie lo ha declarado» y es el caso mayoritario hoy.
+
+    Si el filtro del vocabulario del invariante 8 no excluyera los nulos, cada
+    incendio satelital dispararía una violación y no se publicaría nada.
+    """
+    incidents = _gdf(_incidente(status=None, official_confirmed=False))
+
+    violaciones = validate.check(incidents)
+
+    assert not [v for v in violaciones if v.invariant in (8, 9)]

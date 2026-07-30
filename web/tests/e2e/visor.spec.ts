@@ -683,3 +683,92 @@ test('la ficha atribuye el aviso a AEMET y a la comarca, no al incendio', async 
   await expect(ficha).toContainText('sobre la');
   await expect(ficha).toContainText('comarca');
 });
+
+test('sin parte oficial no se afirma que el incendio esté activo', async ({ page }) => {
+  // El fallo de más alcance que ha tenido el proyecto: los 79 incendios de
+  // producción decían «Activo» en rojo sin que ningún servicio de extinción lo
+  // hubiera declarado. Una detección de calor de hace horas no dice que el
+  // fuego siga vivo.
+  await abrir(page);
+
+  const satelital = page.locator('.tarjeta', {
+    has: page.locator('.tarjeta__estado[data-estado="sin-declarar"]'),
+  }).first();
+
+  await expect(satelital).toBeVisible();
+  await expect(satelital.locator('.tarjeta__estado')).toContainText('Calor detectado hace');
+  await expect(satelital.locator('.tarjeta__estado')).not.toContainText('Activo');
+});
+
+test('el estado declarado por una fuente oficial sí se muestra como tal', async ({ page }) => {
+  await abrir(page);
+
+  const oficial = page.locator('.tarjeta', {
+    has: page.locator('.tarjeta__estado[data-estado="activo"]'),
+  }).first();
+
+  await expect(oficial).toBeVisible();
+  await expect(oficial.locator('.tarjeta__estado')).toHaveText('Activo');
+});
+
+test('el ritmo se presenta como ya detectado, no como previsión', async ({ page }) => {
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Focos nuevos');
+  await expect(ficha).toContainText('ya detectadas');
+  await expect(ficha).not.toContainText(/crecerá hasta|alcanzará|se prevé/);
+});
+
+test('los focos de confianza baja no se muestran por defecto', async ({ page }) => {
+  // Son quemas agrícolas y reflejos en su mayoría: enseñarlos por defecto
+  // llenaría el mapa de puntos que el propio satélite no se cree. Quedan a un
+  // clic, que es lo que además los hace medibles.
+  await abrir(page, '/?lat=39.10&lon=-2.40&zoom=10');
+  await page.waitForTimeout(1500);
+
+  const porDefecto = page.locator('[data-grupo="confianza"] [aria-checked="true"]');
+  await expect(porDefecto).toHaveText('Fiables');
+
+  const visibles = async () =>
+    await page.evaluate(() => {
+      const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+      return mapa?.queryRenderedFeatures({ layers: ['hotspots-punto'] })
+        .filter((f) => f.properties?.confianza_baja === true).length ?? -1;
+    });
+
+  expect(await visibles()).toBe(0);
+
+  await page.locator('[data-grupo="confianza"] [data-valor="todas"]').click();
+  await page.waitForTimeout(900);
+
+  expect(await visibles()).toBeGreaterThan(0);
+});
+
+test('el control de confianza explica qué añade antes de pulsarlo', async ({ page }) => {
+  await abrir(page);
+
+  const nota = page.locator('#nota-confianza');
+  await expect(nota).toBeVisible();
+  await expect(nota).toContainText('poco fiables');
+  await expect(nota).toContainText('quemas agrícolas');
+});
+
+test('la capa de focos nace con el filtro de período aplicado', async ({ page }) => {
+  // La capa se monta de forma asíncrona y `aplicarFiltros` corría antes, así que
+  // nacía sin filtro. FIRMS se pide con 3 días de margen: en producción 579 de
+  // 1.182 focos tenían más de 24 h y se pintaban con el control en «1 día».
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=10');
+  await page.waitForTimeout(1800);
+
+  const filtro = await page.evaluate(() => {
+    const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    return JSON.stringify(mapa?.getFilter('hotspots-punto') ?? null);
+  });
+
+  expect(filtro).not.toBe('null');
+  expect(filtro).toContain('acq_dt');
+  expect(filtro).toContain('confidence_pct');
+});

@@ -170,6 +170,9 @@ def test_block_matches_the_4_2_contract():
         "id", "name", "region", "kind", "critical", "status", "last_success_at",
         "age_seconds", "ttl_seconds", "records", "precision_m", "error",
         "consecutive_failures", "attribution",
+        # Solo FIRMS la declara; el resto publica null, que el frontend
+        # distingue de "cero peticiones restantes".
+        "quota_remaining",
     }
     assert bloque["last_success_at"].endswith("Z")
     assert bloque["age_seconds"] == 120
@@ -265,3 +268,25 @@ def test_registry_source_configured_but_empty_is_error():
     estados = health.from_official_sources([_Falsa()], {"demo": pd.DataFrame()}, now=NOW)
 
     assert estados[0].status(NOW) == STATUS_ERROR
+
+
+# --- cuota de la fuente ------------------------------------------------------
+
+
+def test_la_cuota_se_publica_cuando_la_fuente_la_declara():
+    """Agotar la cuota de FIRMS se manifiesta como «cero incendios».
+
+    Publicar las peticiones restantes es lo que permite avisar antes de que
+    pase, en vez de descubrirlo cuando el mapa ya está vacío.
+    """
+    bloque = _fuente(quota_remaining=37).to_dict(NOW)
+
+    assert bloque["quota_remaining"] == 37
+
+
+def test_sin_cuota_declarada_es_nulo_y_no_cero():
+    """Cero significaría «no quedan peticiones». Nulo, «esta fuente no informa».
+
+    Confundirlos pintaría de rojo Open-Meteo y la DGT, que no tienen cuota.
+    """
+    assert _fuente().to_dict(NOW)["quota_remaining"] is None

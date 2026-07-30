@@ -40,6 +40,7 @@ DISCLAIMER = (
 INCIDENT_WEB_FIELDS = [
     *INCIDENT_SCHEMA,
     "radio_est_km",
+    "ultima_observacion_h",
     *contexto.CAMPOS_CONTEXTO,
 ]
 
@@ -174,11 +175,18 @@ def write_manifest(manifest: dict, path) -> dict:
     return manifest
 
 
-def incidents_for_web(incidents: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+def incidents_for_web(
+    incidents: gpd.GeoDataFrame, now: datetime | None = None
+) -> gpd.GeoDataFrame:
     """Recorta al contrato 4.3 y serializa fechas.
 
     Cada propiedad extra se multiplica por el número de features y el
     presupuesto de RNF-02 son 900 KB para toda la carga inicial.
+
+    `now` es inyectable para que las pruebas puedan fijar la antigüedad de la
+    observación sin depender del reloj: un fixture con fechas congeladas y un
+    `datetime.now()` real dan un número distinto cada día que pasa, y eso ya
+    caducó una suite entera una vez.
     """
     out = incidents.copy()
 
@@ -197,6 +205,21 @@ def incidents_for_web(incidents: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     # otra forma, no un dato nuevo, y arrastra la misma imprecisión.
     area = pd.to_numeric(out["area_est_ha"], errors="coerce")
     out["radio_est_km"] = ((area * 10_000 / math.pi) ** 0.5 / 1000).round(1)
+
+    # Horas desde la última vez que un satélite vio calor ahí.
+    #
+    # Es lo que sustituye al «Activo» que se publicaba antes sin poder
+    # afirmarlo. «Calor detectado hace 6 h» es comprobable; «Activo» era una
+    # afirmación sobre el presente basada en una observación del pasado.
+    #
+    # Se calcula aquí y no en el frontend para que la lista pueda ordenar por
+    # este campo sin recalcularlo en cada repintado, y para que el número que
+    # ordena y el número que se muestra sean el mismo.
+    visto = pd.to_datetime(out["last_detected"], errors="coerce", utc=True)
+    ahora = pd.Timestamp(now or datetime.now(UTC))
+    out["ultima_observacion_h"] = (
+        (ahora - visto).dt.total_seconds() / 3600.0
+    ).round(1)
 
     return gpd.GeoDataFrame(
         out[[*INCIDENT_WEB_FIELDS, "geometry"]], geometry="geometry", crs=incidents.crs

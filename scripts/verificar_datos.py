@@ -71,6 +71,23 @@ def verificar() -> Informe:
     incidentes = gpd.read_file(OUTPUTS.incidents_geojson)
     hotspots = gpd.read_file(OUTPUTS.hotspots_geojson)
 
+    # El fichero lleva dos poblaciones desde que las detecciones de confianza
+    # baja se conservan en vez de descartarse: las fiables, que son las que el
+    # manifiesto cuenta y las que han pasado por el clustering, y las de
+    # confianza baja, que se publican para que el control «Todas» del visor las
+    # revele pero no forman parte de ningún incendio.
+    #
+    # Comparar el total del fichero contra el recuento del manifiesto daba un
+    # descuadre de 8 focos. No era un fallo del manifiesto: era comparar cosas
+    # distintas, que es como se lee mal un descuadre correcto.
+    if "confianza_baja" in hotspots.columns:
+        baja = hotspots["confianza_baja"].fillna(False).astype(bool)
+        fiables = hotspots[~baja]
+        if int(baja.sum()):
+            inf.add(OK, f"{int(baja.sum())} focos de confianza baja, publicados aparte")
+    else:
+        fiables = hotspots
+
     if len(incidentes) == contadores["incidents_total"]:
         inf.add(OK, f"{len(incidentes)} incidentes, y el manifiesto dice lo mismo")
     else:
@@ -80,13 +97,13 @@ def verificar() -> Informe:
             f"incidentes y incidents.geojson tiene {len(incidentes)}",
         )
 
-    if len(hotspots) == contadores["hotspots_24h"]:
-        inf.add(OK, f"{len(hotspots)} focos satelitales, y el manifiesto coincide")
+    if len(fiables) == contadores["hotspots_24h"]:
+        inf.add(OK, f"{len(fiables)} focos satelitales fiables, y el manifiesto coincide")
     else:
         inf.add(
             FALLO,
             f"Descuadre: el manifiesto dice {contadores['hotspots_24h']} focos "
-            f"y hotspots.geojson tiene {len(hotspots)}",
+            f"fiables y hotspots.geojson tiene {len(fiables)}",
         )
 
     # --- los invariantes sobre el fichero ya escrito ------------------------
@@ -111,12 +128,12 @@ def verificar() -> Informe:
 
     # --- la antigüedad publicada es la real ---------------------------------
 
-    if len(hotspots) and "acq_dt" in hotspots.columns:
+    if len(fiables) and "acq_dt" in fiables.columns:
         # `worst_data_age_seconds` es el máximo **por familia de sensor**, no la
         # edad del foco más reciente. VIIRS puede llevar 3 h sin pasada mientras
         # SEVIRI acaba de refrescar: el número que se publica es el peor de los
         # dos, porque enseñar el mejor tranquilizaría sin fundamento.
-        marcas = pd.to_datetime(hotspots["acq_dt"], utc=True, errors="coerce")
+        marcas = pd.to_datetime(fiables["acq_dt"], utc=True, errors="coerce")
         instrumento = (
             hotspots["instrument"].astype(str).str.upper()
             if "instrument" in hotspots.columns

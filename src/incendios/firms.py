@@ -91,6 +91,33 @@ def _url(source: str, area: str) -> str:
 INTENTOS = 3
 ESPERA_BASE_S = 2.0
 
+# Cuota que queda, según la última respuesta de FIRMS.
+#
+# FIRMS devuelve la cabecera `Remaining-request-endpoint` en cada petición y
+# hasta ahora la tirábamos. Sin ella, agotar la cuota se manifiesta como "cero
+# incendios": el fallo que este proyecto existe para no cometer. Es un módulo a
+# nivel de proceso porque el pipeline corre una vez y muere; no hay estado que
+# compartir entre ejecuciones.
+cuota_restante: int | None = None
+
+
+def _anotar_cuota(resp: httpx.Response) -> None:
+    """Guarda la cuota restante que declara FIRMS, quedándose con el mínimo.
+
+    Las 8 peticiones van en paralelo y cada una devuelve su propio recuento; el
+    mínimo es el que describe la situación real al acabar la ejecución.
+    """
+    global cuota_restante
+    bruto = resp.headers.get("Remaining-request-endpoint")
+    if bruto is None:
+        return
+    try:
+        valor = int(bruto)
+    except ValueError:
+        log.warning("FIRMS: cuota ilegible en la cabecera: %r", bruto)
+        return
+    cuota_restante = valor if cuota_restante is None else min(cuota_restante, valor)
+
 
 def _fetch_one(client: httpx.Client, source: str, area_key: str, area: str) -> pd.DataFrame:
     url = _url(source, area)
@@ -99,6 +126,7 @@ def _fetch_one(client: httpx.Client, source: str, area_key: str, area: str) -> p
         try:
             resp = client.get(url, timeout=60.0)
             resp.raise_for_status()
+            _anotar_cuota(resp)
             break
         except httpx.HTTPError as exc:
             ultimo = intento == INTENTOS
@@ -207,6 +235,11 @@ def fetch_hotspots(persist_raw: bool = True) -> pd.DataFrame:
         path = RAW / f"firms_{stamp}.parquet"
         df.to_parquet(path, index=False)
         log.info("Raw guardado en %s (%d filas)", path, len(df))
+
+    if cuota_restante is not None:
+        # Se avisa antes de quedarse a cero, no cuando ya no hay datos.
+        nivel = log.warning if cuota_restante < 50 else log.info
+        nivel("FIRMS: quedan %d peticiones de cuota", cuota_restante)
 
     log.info("FIRMS: %d hotspots crudos", len(df))
     return df

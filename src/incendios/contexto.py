@@ -1,20 +1,28 @@
-"""Contexto de cada incendio: viento, avisos oficiales y carreteras cortadas.
+"""Contexto de cada incendio: viento, avisos, cortes de carretera y ritmo.
 
 Todo lo de aquí **cruza capas que ya se publican**. No añade ninguna fuente ni
 ninguna petición: reordena datos que el pipeline ya tiene, para responder la
 pregunta que de verdad se hace quien abre el visor —*¿viene hacia mí?*— en vez
 de dejarla como deberes del usuario.
 
-Por qué en el pipeline y no en el frontend. Las tres capas de contexto se cargan
-en el navegador solo cuando enciendes su conmutador, así que calcular esto en el
-cliente daría una ficha que dice cosas distintas según qué botones hayas pulsado
-antes. Además aquí se puede probar.
+Por qué en el pipeline y no en el frontend. Las capas de contexto se cargan en el
+navegador solo cuando enciendes su conmutador, así que calcular esto en el cliente
+daría una ficha que dice cosas distintas según qué botones hayas pulsado antes.
+Además aquí se puede probar.
 
 **Nada de esto es una predicción.** Se publica el viento *observado* en la
-posición del incendio y el aviso que *AEMET* declara sobre esa zona. Combinarlos
-para afirmar hacia dónde va a avanzar el fuego sería una predicción nuestra, y
-este proyecto no tiene autoridad para hacerla ante alguien que está mirando si
-arde algo cerca de su casa.
+posición del incendio, el aviso que *AEMET* declara sobre esa zona y la superficie
+nueva *ya detectada* en las últimas horas. Combinarlos para afirmar hacia dónde va
+a avanzar el fuego sería una predicción nuestra, y este proyecto no tiene
+autoridad para hacerla ante alguien que está mirando si arde algo cerca de su
+casa.
+
+Lo que **no** está aquí y se echa en falta: la distancia al núcleo de población
+más cercano, que es la pregunta literal del usuario. No se implementa porque la
+capa del IGN que tenemos son **polígonos municipales**, no núcleos: usar su
+centroide como "el pueblo" daría un error típico de 3,3 km y de hasta 23,6 km en
+el municipio más grande. Hace falta la capa de entidades de población, y hasta
+tenerla es mejor no decir nada que decir un número así.
 """
 
 from __future__ import annotations
@@ -46,6 +54,18 @@ MAX_DISTANCIA_VIENTO_KM = 120.0
 # "cerca", y la causa solo se declara cuando la DGT la declara.
 RADIO_CORTES_KM = 15.0
 
+# Ventana para medir el ritmo. 6 h es aproximadamente el hueco entre pasadas de
+# VIIRS: más corto y la mayoría de incendios no tendrían dos observaciones que
+# comparar; más largo y un incendio que se reactivó hace una hora se diluiría en
+# el promedio.
+VENTANA_RITMO_H = 6.0
+
+# Superficie que cubre un hotspot, la misma constante que usa `cluster.py` para
+# `area_est_ha`. Se comparte a propósito: si el ritmo usara otra, el crecimiento
+# publicado no cuadraría con la superficie publicada y no habría forma de saber
+# cuál de las dos mentía.
+AREA_POR_FOCO_HA = 14.06
+
 CAMPOS_CONTEXTO = [
     "viento_kmh",
     "viento_rachas_kmh",
@@ -59,6 +79,8 @@ CAMPOS_CONTEXTO = [
     "aviso_titular",
     "cortes_cerca",
     "cortes_cerca_por_incendio",
+    "focos_recientes",
+    "crecimiento_ha_h",
 ]
 
 
@@ -258,8 +280,62 @@ def enriquecer(
     viento: gpd.GeoDataFrame | None = None,
     avisos: gpd.GeoDataFrame | None = None,
     cortes: gpd.GeoDataFrame | None = None,
+    hotspots: gpd.GeoDataFrame | None = None,
+    ahora: pd.Timestamp | None = None,
 ) -> gpd.GeoDataFrame:
-    """Aplica los tres cruces. Cada uno es independiente de los otros dos."""
+    """Aplica los cuatro cruces. Cada uno es independiente de los demás."""
     salida = anadir_viento(incidents, viento)
     salida = anadir_avisos(salida, avisos)
-    return anadir_cortes(salida, cortes)
+    salida = anadir_cortes(salida, cortes)
+    return anadir_ritmo(salida, hotspots, ahora)
+
+
+def anadir_ritmo(
+    incidents: gpd.GeoDataFrame,
+    hotspots: gpd.GeoDataFrame | None,
+    ahora: pd.Timestamp | None = None,
+) -> gpd.GeoDataFrame:
+    """Ritmo de crecimiento **observado**, no previsto.
+
+    Es la diferencia entre un incendio que avanza y uno que se está apagando, y
+    hoy la aplicación no la dice: dos incendios de 28 ha se ven idénticos aunque
+    uno lleve creciendo seis horas y el otro no se haya movido.
+
+    Se mide contando focos nuevos en las últimas `VENTANA_RITMO_H` horas y
+    convirtiéndolos a superficie con la **misma** constante que `cluster.py` usa
+    para `area_est_ha`. Compartir la constante no es un detalle: con dos
+    distintas, el crecimiento publicado no cuadraría con la superficie publicada
+    y no habría manera de saber cuál de las dos miente.
+
+    Lo que este número **no** es: una predicción. Dice cuánta superficie nueva se
+    ha detectado en las últimas horas. No dice cuánta se detectará en las
+    próximas, y la ficha no lo insinúa.
+
+    Cuidado con leerlo como cero: un incendio sin focos recientes puede estar
+    apagado, bajo nube, o simplemente no haber tenido pasada. Por eso se publican
+    los dos números —focos recientes y ritmo— y no solo el segundo.
+    """
+    salida = _vacio(incidents)
+    if hotspots is None or hotspots.empty or salida.empty:
+        return salida
+    if "fire_id" not in hotspots.columns or "acq_dt" not in hotspots.columns:
+        return salida
+
+    ahora = ahora or pd.Timestamp.now(tz="UTC")
+    visto = pd.to_datetime(hotspots["acq_dt"], errors="coerce", utc=True)
+    recientes = hotspots[visto >= ahora - pd.Timedelta(hours=VENTANA_RITMO_H)]
+
+    cuenta = recientes.groupby("fire_id").size()
+    focos = cuenta.reindex(salida["id"]).fillna(0).astype(int)
+
+    salida["focos_recientes"] = focos.to_numpy()
+    salida["crecimiento_ha_h"] = (
+        focos.to_numpy() * AREA_POR_FOCO_HA / VENTANA_RITMO_H
+    ).round(1)
+
+    creciendo = int((salida["focos_recientes"] > 0).sum())
+    log.info(
+        "Contexto: %d/%d incendios con focos en las últimas %.0f h",
+        creciendo, len(salida), VENTANA_RITMO_H,
+    )
+    return salida

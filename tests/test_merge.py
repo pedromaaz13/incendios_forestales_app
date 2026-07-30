@@ -341,7 +341,11 @@ def test_cluster_status_is_translated_to_the_contract_vocabulary(now):
 
     incidentes = merge.build_incidents(official, fires)
 
-    assert set(incidentes["status"]) <= {"activo", "estabilizado", "controlado"}
+    # `None` entra en el conjunto permitido desde que el estado solo se publica
+    # cuando lo afirma un servicio de extinción. Lo que sigue prohibido, y es lo
+    # que este test vigila, es que se escape el vocabulario interno del cluster.
+    assert set(incidentes["status"]) <= {"activo", "estabilizado", "controlado", None}
+    assert "inactivo" not in set(incidentes["status"])
 
 
 def test_satellite_only_cluster_without_recent_detections_is_not_published(now):
@@ -465,3 +469,57 @@ def test_precision_toma_el_mejor_sensor_no_el_peor(now):
     emparejados, clusters = merge.match(make_official([]).iloc[0:0], fires)
     salida = merge.build_incidents(emparejados, clusters)
     assert salida["position_precision_m"].iloc[0] == merge.VIIRS_PIXEL_PRECISION_M
+
+
+# --- El estado solo lo afirma quien puede afirmarlo -------------------------
+#
+# Antes, un cluster sin parte oficial se publicaba con `status = "activo"` y la
+# interfaz lo pintaba en rojo con esa palabra. Internamente solo significaba
+# "detectado dentro de la ventana reciente": con 6 h de antigüedad y ninguna
+# pasada posterior, ese incendio puede estar apagado.
+#
+# Afectaba al 100 % de lo publicado, porque hoy no hay ni un parte oficial en
+# producción. Es exactamente el verbo de certeza que el aviso de dominio prohíbe.
+
+
+def test_sin_parte_oficial_no_se_publica_ningun_estado(now):
+    """Una detección de calor no dice si el fuego sigue vivo."""
+    official = make_official([]).iloc[0:0]
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["status"] is None
+    assert fila["status_origen"] == "satelite"
+
+
+def test_con_parte_oficial_el_estado_es_el_que_declara_la_fuente(now):
+    official = make_official([
+        {"source_id": "jcyl", "latitude": 39.500, "longitude": -0.5,
+         "precision_m": 500.0, "status": "controlado"},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.500, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["status"] == "controlado"
+    assert fila["status_origen"] == "oficial"
+
+
+def test_un_huerfano_oficial_sin_estado_declarado_queda_nulo(now):
+    """Ser un parte oficial no basta: si la fuente no declara estado, no se
+    inventa uno. Antes se rellenaba con "activo"."""
+    official = make_official([
+        {"source_id": "112cv", "latitude": 38.0, "longitude": -1.0,
+         "precision_m": 100.0, "status": None},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 42.0, "longitude": -6.0}])
+
+    emparejados, clusters = merge.match(official, fires)
+    incidentes = merge.build_incidents(emparejados, clusters)
+    huerfano = incidentes[incidentes["origin"] == "oficial"].iloc[0]
+
+    assert huerfano["status"] is None or pd.isna(huerfano["status"])
+    assert huerfano["status_origen"] == "oficial"

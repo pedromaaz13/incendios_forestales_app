@@ -268,3 +268,79 @@ def test_enriquecer_sin_ninguna_capa_de_contexto():
 def test_sin_incendios_no_lanza():
     vacio = gpd.GeoDataFrame({"id": []}, geometry=[], crs=CRS_WGS84)
     assert contexto.enriquecer(vacio, viento=_viento((40.0, -3.0, 90.0, 10.0))).empty
+
+
+# --- Ritmo de crecimiento ---------------------------------------------------
+
+
+def _hotspots(*items: tuple[str, float]) -> gpd.GeoDataFrame:
+    """(fire_id, horas_atras) por foco."""
+    ahora = pd.Timestamp("2026-07-30T12:00:00Z")
+    return gpd.GeoDataFrame(
+        {
+            "fire_id": [i[0] for i in items],
+            "acq_dt": [ahora - pd.Timedelta(hours=i[1]) for i in items],
+        },
+        geometry=[Point(-3.0, 40.0)] * len(items),
+        crs=CRS_WGS84,
+    )
+
+
+AHORA = pd.Timestamp("2026-07-30T12:00:00Z")
+
+
+def test_cuenta_solo_los_focos_de_la_ventana_reciente():
+    """Un foco de hace 20 h no describe el ritmo de ahora."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+    hs = _hotspots(("f0", 1.0), ("f0", 3.0), ("f0", 20.0))
+
+    fila = contexto.anadir_ritmo(inc, hs, ahora=AHORA).iloc[0]
+
+    assert fila["focos_recientes"] == 2
+
+
+def test_el_ritmo_usa_la_misma_constante_que_la_superficie():
+    """Si usara otra, el crecimiento publicado no cuadraría con el área
+    publicada y no habría forma de saber cuál de las dos miente."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+    hs = _hotspots(("f0", 1.0), ("f0", 2.0), ("f0", 3.0))
+
+    fila = contexto.anadir_ritmo(inc, hs, ahora=AHORA).iloc[0]
+
+    esperado = round(3 * contexto.AREA_POR_FOCO_HA / contexto.VENTANA_RITMO_H, 1)
+    assert fila["crecimiento_ha_h"] == esperado
+
+
+def test_un_incendio_sin_focos_recientes_publica_cero():
+    """Cero focos recientes es un dato, y la ficha lo matiza: puede estar
+    apagado, bajo nube, o sin pasada. Por eso se publican los dos números."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+    hs = _hotspots(("f0", 30.0))
+
+    fila = contexto.anadir_ritmo(inc, hs, ahora=AHORA).iloc[0]
+
+    assert fila["focos_recientes"] == 0
+    assert fila["crecimiento_ha_h"] == 0.0
+
+
+def test_el_ritmo_no_mezcla_focos_de_incendios_distintos():
+    inc = _incendios((40.0, -3.0), (41.0, -4.0))
+    inc["id"] = ["f0", "f1"]
+    hs = _hotspots(("f0", 1.0), ("f1", 1.0), ("f1", 2.0), ("f1", 3.0))
+
+    salida = contexto.anadir_ritmo(inc, hs, ahora=AHORA)
+
+    assert salida.set_index("id")["focos_recientes"].to_dict() == {"f0": 1, "f1": 3}
+
+
+def test_sin_hotspots_el_ritmo_queda_nulo_no_cero():
+    """Sin la capa no se ha podido mirar; cero afirmaría que no ha crecido."""
+    inc = _incendios((40.0, -3.0))
+    inc["id"] = ["f0"]
+
+    fila = contexto.anadir_ritmo(inc, None).iloc[0]
+
+    assert pd.isna(fila["focos_recientes"])

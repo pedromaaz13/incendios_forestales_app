@@ -136,8 +136,26 @@ const ETIQUETA_ESTADO: Record<string, string> = {
   extinguido: 'Extinguido',
 };
 
-export function etiquetaEstado(estado: string): string {
-  return ETIQUETA_ESTADO[estado] ?? 'Estado no facilitado';
+/**
+ * Etiqueta del estado de un incendio.
+ *
+ * Cuando lo declara un servicio de extinción se usa su palabra: «Activo»,
+ * «Controlado». Cuando solo hay satélite **no se declara ningún estado**, y se
+ * dice lo único comprobable: cuánto hace que se vio calor ahí.
+ *
+ * Antes los 79 incendios de producción decían «Activo» en rojo sin que nadie lo
+ * hubiera declarado. «Activo» es una afirmación sobre el presente sostenida por
+ * una observación de hace horas, y con 6 h de antigüedad ese fuego puede estar
+ * apagado. El aviso de dominio del proyecto prohíbe los verbos de certeza.
+ */
+export function etiquetaEstado(
+  estado: string | null,
+  observadoHaceH: number | null = null,
+): string {
+  if (estado) return ETIQUETA_ESTADO[estado] ?? 'Estado no facilitado';
+  if (observadoHaceH === null) return 'Sin estado declarado';
+  if (observadoHaceH < 1) return 'Calor detectado hace menos de 1 h';
+  return `Calor detectado hace ${Math.round(observadoHaceH)} h`;
 }
 
 const ETIQUETA_FUENTE_ESTADO: Record<string, string> = {

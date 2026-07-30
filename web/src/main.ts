@@ -334,7 +334,17 @@ function montarCapas(mapa: MapaGL): void {
     anadirCapasIncidentes(mapa);
   }
 
-  void montarCapaDiferida(mapa, 'hotspots');
+  // El `then` no es opcional. La capa de focos se monta de forma asíncrona —hay
+  // que descargar su GeoJSON— así que `aplicarFiltros` de más abajo corre antes
+  // de que exista y **la capa nacía sin filtro ninguno**.
+  //
+  // Consecuencia medida en producción: FIRMS se pide con 3 días de margen, y
+  // 579 de los 1.182 focos publicados tenían más de 24 h. Se pintaban todos
+  // mientras el control decía «1 día». No fallaba nada visible: el mapa
+  // enseñaba más focos de los que decía, y nadie compara 600 puntos a ojo.
+  void montarCapaDiferida(mapa, 'hotspots').then(() => {
+    aplicarFiltros(mapa, estado.filtros, estado.diaElegido);
+  });
 }
 
 /**

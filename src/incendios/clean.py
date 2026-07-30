@@ -37,17 +37,56 @@ def to_gdf(df: pd.DataFrame) -> gpd.GeoDataFrame:
     )
 
 
-def filter_confidence(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+def _pasa_confianza(gdf: gpd.GeoDataFrame) -> pd.Series:
+    """Máscara de las detecciones que superan el umbral de confianza."""
     is_viirs = gdf["instrument"].str.upper().str.startswith("VIIRS")
 
     viirs_ok = is_viirs & gdf["confidence_raw"].str.strip().str.lower().isin(
         {c[0] for c in VIIRS_MIN_CONFIDENCE} | set(VIIRS_MIN_CONFIDENCE)
     )
     modis_ok = ~is_viirs & (gdf["confidence_pct"] >= MODIS_MIN_CONFIDENCE)
+    return viirs_ok | modis_ok
 
-    keep = viirs_ok | modis_ok
+
+def filter_confidence(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    keep = _pasa_confianza(gdf)
     log.info("Confianza: %d/%d hotspots conservados", int(keep.sum()), len(gdf))
     return gdf[keep].copy()
+
+
+def split_confidence(gdf: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """Separa las detecciones fiables de las de confianza baja, sin tirar nada.
+
+    Antes las de confianza baja se descartaban y no quedaba rastro: 256 de 3.639
+    en la última ejecución. Entre ellas hay quemas agrícolas y reflejos —que es
+    la razón del umbral— pero también incendios incipientes, y **no había forma
+    de saber la proporción** porque el dato no llegaba a publicarse.
+
+    Se conservan etiquetadas para dos cosas:
+
+    1. El control «Todas / ≥ Media / Solo alta» del visor pasa a significar algo.
+       Existía ya, y con los descartes fuera del fichero apenas filtraba nada.
+    2. Se puede medir. Con el histórico se sabrá cuántas de estas acabaron
+       confirmadas por una detección posterior, y eso convierte un umbral elegido
+       a ojo en un umbral medido.
+
+    Lo que **no** hacen: crear incidentes. Solo entran las fiables al clustering.
+    Publicar un incendio a partir de una detección que no nos creemos sería
+    inflar el recuento con incertidumbre disfrazada de dato.
+    """
+    keep = _pasa_confianza(gdf)
+
+    fiables = gdf[keep].copy()
+    fiables["confianza_baja"] = False
+
+    bajas = gdf[~keep].copy()
+    bajas["confianza_baja"] = True
+
+    log.info(
+        "Confianza: %d fiables · %d de confianza baja conservadas aparte",
+        len(fiables), len(bajas),
+    )
+    return fiables, bajas
 
 
 def load_exclusions(path: Path = EXCLUSIONS_PATH) -> gpd.GeoDataFrame | None:

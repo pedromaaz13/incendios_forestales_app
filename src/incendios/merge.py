@@ -82,6 +82,9 @@ INCIDENT_SCHEMA = [
     "official_confirmed",
     "confirmed_by",
     "status",
+    # Quién afirma ese estado: `oficial` o `satelite`. Con `satelite`, `status`
+    # es nulo — una detección de calor no dice si el fuego sigue vivo.
+    "status_origen",
     "municipio",
     "provincia",
     "igr_level",
@@ -258,12 +261,26 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
     #    no ha vuelto a pasar; llamarlo "controlado" sería inventar y llamarlo
     #    "activo" sería alarmar. Sus focos siguen en la capa de hotspots, que es
     #    el dato crudo, sin afirmar nada sobre el estado del fuego.
+    #
+    # **Sin parte oficial no se publica ningún estado.** Antes se publicaba
+    # "activo", y la interfaz lo pintaba en rojo con esa palabra. Pero "activo"
+    # internamente solo significaba "detectado dentro de la ventana reciente":
+    # con 6 h de antigüedad y ninguna pasada posterior, un incendio así puede
+    # estar apagado. El aviso de dominio prohíbe los verbos de certeza, y aquello
+    # afectaba al 100 % de lo publicado, porque hoy no hay ni un parte oficial.
+    #
+    # Ahora `status` queda **nulo** y `status_origen` dice quién lo afirma. Lo que
+    # el dato satelital sí soporta —cuánto hace que se vio calor ahí— se publica
+    # aparte, en `ultima_observacion_h`, y es lo que la interfaz enseña.
+    oficial = fires["official_confirmed"] & fires["official_status"].notna()
     inactivo = fires["status"].eq("inactivo") if "status" in fires.columns else False
+
     fires["status"] = np.where(
-        fires["official_confirmed"] & fires["official_status"].notna(),
+        oficial,
         fires["official_status"],
-        np.where(inactivo, "_sin_detecciones_recientes", "activo"),
+        np.where(inactivo, "_sin_detecciones_recientes", None),
     )
+    fires["status_origen"] = np.where(oficial, "oficial", "satelite")
     # La precisión sale del **mejor** sensor que vio el incendio, no de una
     # constante: VIIRS acota a 375 m y MODIS a 1 km. Es la mitad del producto
     # (RF-F-03): dibujar un punto donde solo hay un área es fingir precisión, y
@@ -293,7 +310,10 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
         orphans["first_detected"] = orphans["reported_at"]
         orphans["last_detected"] = orphans["reported_at"]
         orphans["started_at"] = orphans["reported_at"]
-        orphans["status"] = orphans["official_status"].fillna("activo")
+        # Un huérfano es, por definición, un parte oficial: su estado sí es
+        # afirmable. Si la fuente no lo declara queda nulo, no "activo".
+        orphans["status"] = orphans["official_status"]
+        orphans["status_origen"] = "oficial"
 
     parts = [fires]
     if not orphans.empty:
