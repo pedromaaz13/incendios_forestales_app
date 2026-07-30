@@ -54,6 +54,7 @@ class SourceHealth:
     # incendios", y ese es el fallo que este proyecto existe para no cometer:
     # con este número, el panel de fuentes lo dice antes de que pase.
     quota_remaining: int | None = None
+    quota_limit: int | None = None
 
     def age_seconds(self, now: datetime) -> int | None:
         if self.last_success_at is None:
@@ -89,6 +90,7 @@ class SourceHealth:
             "consecutive_failures": int(self.consecutive_failures),
             "attribution": self.attribution,
             "quota_remaining": self.quota_remaining,
+            "quota_limit": self.quota_limit,
         }
 
 

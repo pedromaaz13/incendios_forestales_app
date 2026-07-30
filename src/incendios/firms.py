@@ -91,32 +91,67 @@ def _url(source: str, area: str) -> str:
 INTENTOS = 3
 ESPERA_BASE_S = 2.0
 
-# Cuota que queda, según la última respuesta de FIRMS.
+# Cuota restante de FIRMS.
 #
-# FIRMS devuelve la cabecera `Remaining-request-endpoint` en cada petición y
-# hasta ahora la tirábamos. Sin ella, agotar la cuota se manifiesta como "cero
-# incendios": el fallo que este proyecto existe para no cometer. Es un módulo a
-# nivel de proceso porque el pipeline corre una vez y muere; no hay estado que
-# compartir entre ejecuciones.
+# Agotarla se manifiesta como **cero incendios**, que es el fallo que este
+# proyecto existe para no cometer. Con este número el panel de fuentes lo puede
+# avisar antes de que pase.
+#
+# **FIRMS no lo manda en ninguna cabecera.** Se comprobó el 30-07-2026: las
+# respuestas de la API de área solo traen `x-frame-options` y
+# `x-content-type-options`. La primera versión de esto leía una cabecera
+# `Remaining-request-endpoint` copiada de AEMET, y publicaba un campo que salía
+# siempre nulo — un dato inventado por asumir en vez de mirar.
+#
+# El dato real está en un endpoint aparte, cuyo esquema es:
+#
+#     { "transaction_limit": 5000, "current_transactions": 54,
+#       "transaction_interval": "10 minutes" }
+#
+# Es un módulo a nivel de proceso porque el pipeline corre una vez y muere.
+QUOTA_URL = "https://firms.modaps.eosdis.nasa.gov/mapserver/mapkey_status/"
+
 cuota_restante: int | None = None
+cuota_limite: int | None = None
 
 
-def _anotar_cuota(resp: httpx.Response) -> None:
-    """Guarda la cuota restante que declara FIRMS, quedándose con el mínimo.
+def consultar_cuota(client: httpx.Client | None = None) -> int | None:
+    """Pregunta a FIRMS cuántas peticiones quedan en la ventana actual.
 
-    Las 8 peticiones van en paralelo y cada una devuelve su propio recuento; el
-    mínimo es el que describe la situación real al acabar la ejecución.
+    Devuelve `None` si no se puede saber: sin clave, sin red, o si FIRMS cambia
+    el esquema. Es telemetría, así que un fallo aquí no afecta a la ingesta.
     """
-    global cuota_restante
-    bruto = resp.headers.get("Remaining-request-endpoint")
-    if bruto is None:
-        return
+    global cuota_restante, cuota_limite
+
+    if not FIRMS_MAP_KEY:
+        return None
+
+    propio = client is None
+    client = client or httpx.Client(follow_redirects=True, timeout=30.0)
     try:
-        valor = int(bruto)
-    except ValueError:
-        log.warning("FIRMS: cuota ilegible en la cabecera: %r", bruto)
-        return
-    cuota_restante = valor if cuota_restante is None else min(cuota_restante, valor)
+        r = client.get(QUOTA_URL, params={"MAP_KEY": FIRMS_MAP_KEY})
+        r.raise_for_status()
+        cuerpo = r.json()
+        limite = int(cuerpo["transaction_limit"])
+        usadas = int(cuerpo["current_transactions"])
+    except Exception as exc:
+        log.warning("FIRMS: no se pudo consultar la cuota (%s)", exc)
+        return None
+    finally:
+        if propio:
+            client.close()
+
+    cuota_limite = limite
+    cuota_restante = max(0, limite - usadas)
+
+    # Se avisa antes de quedarse a cero, no cuando ya no hay datos. El umbral es
+    # relativo porque el límite lo fija FIRMS y puede cambiar.
+    nivel = log.warning if cuota_restante < limite * 0.1 else log.info
+    nivel(
+        "FIRMS: %d de %d peticiones usadas en la ventana de %s",
+        usadas, limite, cuerpo.get("transaction_interval", "?"),
+    )
+    return cuota_restante
 
 
 def _fetch_one(client: httpx.Client, source: str, area_key: str, area: str) -> pd.DataFrame:
@@ -126,7 +161,6 @@ def _fetch_one(client: httpx.Client, source: str, area_key: str, area: str) -> p
         try:
             resp = client.get(url, timeout=60.0)
             resp.raise_for_status()
-            _anotar_cuota(resp)
             break
         except httpx.HTTPError as exc:
             ultimo = intento == INTENTOS
@@ -207,6 +241,8 @@ def fetch_hotspots(persist_raw: bool = True) -> pd.DataFrame:
             "https://firms.modaps.eosdis.nasa.gov/api/map_key/"
         )
 
+    consultar_cuota()
+
     jobs = [(s, k, a) for s in FIRMS_SOURCES for k, a in AREAS.items()]
     frames: list[pd.DataFrame] = []
 
@@ -235,11 +271,6 @@ def fetch_hotspots(persist_raw: bool = True) -> pd.DataFrame:
         path = RAW / f"firms_{stamp}.parquet"
         df.to_parquet(path, index=False)
         log.info("Raw guardado en %s (%d filas)", path, len(df))
-
-    if cuota_restante is not None:
-        # Se avisa antes de quedarse a cero, no cuando ya no hay datos.
-        nivel = log.warning if cuota_restante < 50 else log.info
-        nivel("FIRMS: quedan %d peticiones de cuota", cuota_restante)
 
     log.info("FIRMS: %d hotspots crudos", len(df))
     return df

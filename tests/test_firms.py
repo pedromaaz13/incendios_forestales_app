@@ -317,61 +317,70 @@ def test_una_clave_agotada_no_se_reintenta(monkeypatch):
     assert df.empty
 
 
-# --- Cuota declarada por FIRMS ----------------------------------------------
+# --- Cuota de FIRMS ---------------------------------------------------------
+#
+# FIRMS **no** manda la cuota en ninguna cabecera: se comprobó el 30-07-2026 y
+# las respuestas de la API de área solo traen `x-frame-options` y
+# `x-content-type-options`. La primera versión de esto leía una cabecera copiada
+# de AEMET y publicaba un campo que salía siempre nulo. El dato real está en un
+# endpoint aparte, y estas pruebas fijan su esquema.
 
 
-def test_la_cuota_se_lee_de_la_cabecera(monkeypatch):
-    """FIRMS manda `Remaining-request-endpoint` en cada respuesta.
-
-    Hasta ahora se tiraba, y agotar la cuota se manifestaba como "cero
-    incendios": el fallo que este proyecto existe para no cometer.
-    """
-    monkeypatch.setattr(firms, "cuota_restante", None)
-    handler = lambda request: httpx.Response(
-        200,
-        text=read_fixture("firms_viirs_snpp.csv"),
-        headers={"Remaining-request-endpoint": "412"},
-    )
-
-    firms._fetch_one(_client(handler), "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
-
-    assert firms.cuota_restante == 412
-
-
-def test_con_varias_peticiones_se_guarda_la_cuota_menor(monkeypatch):
-    """Las peticiones van en paralelo y cada una trae su recuento.
-
-    El mínimo es el que describe la situación al acabar la ejecución; quedarse
-    con el último sería quedarse con el de una carrera indeterminada.
-    """
-    monkeypatch.setattr(firms, "cuota_restante", None)
-    valores = iter(["300", "180", "250"])
-
+def _cuota(payload: dict | str, status: int = 200):
     def handler(request):
-        return httpx.Response(
-            200,
-            text=read_fixture("firms_viirs_snpp.csv"),
-            headers={"Remaining-request-endpoint": next(valores)},
-        )
+        assert "MAP_KEY" in str(request.url), "la clave debe ir como parámetro"
+        if isinstance(payload, str):
+            return httpx.Response(status, text=payload)
+        return httpx.Response(status, json=payload)
 
-    client = _client(handler)
-    for _ in range(3):
-        firms._fetch_one(client, "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
-
-    assert firms.cuota_restante == 180
+    return handler
 
 
-def test_una_cuota_ilegible_no_tumba_la_ingesta(monkeypatch):
-    """Si FIRMS cambia el formato de la cabecera, se avisa y se sigue: la cuota
-    es telemetría, no un dato del que dependa el mapa."""
+def test_la_cuota_se_calcula_como_limite_menos_usadas(monkeypatch):
+    monkeypatch.setattr(firms, "FIRMS_MAP_KEY", "clave-de-prueba")
     monkeypatch.setattr(firms, "cuota_restante", None)
-    handler = lambda request: httpx.Response(
-        200,
-        text=read_fixture("firms_viirs_snpp.csv"),
-        headers={"Remaining-request-endpoint": "muchas"},
-    )
+    handler = _cuota({
+        "transaction_limit": 5000,
+        "current_transactions": 54,
+        "transaction_interval": "10 minutes",
+    })
 
-    df = firms._fetch_one(_client(handler), "VIIRS_SNPP_NRT", "peninsula", "1,2,3,4")
+    assert firms.consultar_cuota(_client(handler)) == 4946
+    assert firms.cuota_restante == 4946
+    assert firms.cuota_limite == 5000
 
+
+def test_una_cuota_agotada_no_da_negativo(monkeypatch):
+    """Cero es el suelo: un negativo se leería como un valor imposible y podría
+    colarse en una comparación al revés."""
+    monkeypatch.setattr(firms, "FIRMS_MAP_KEY", "clave-de-prueba")
+    monkeypatch.setattr(firms, "cuota_restante", None)
+    handler = _cuota({"transaction_limit": 5000, "current_transactions": 6000})
+
+    assert firms.consultar_cuota(_client(handler)) == 0
+
+
+def test_sin_clave_no_se_consulta_la_cuota(monkeypatch):
+    monkeypatch.setattr(firms, "FIRMS_MAP_KEY", "")
+    monkeypatch.setattr(firms, "cuota_restante", None)
+
+    assert firms.consultar_cuota() is None
+
+
+def test_un_esquema_distinto_no_tumba_la_ingesta(monkeypatch):
+    """La cuota es telemetría. Si FIRMS cambia el formato se avisa y se sigue:
+    quedarse sin mapa por no poder leer un contador sería desproporcionado."""
+    monkeypatch.setattr(firms, "FIRMS_MAP_KEY", "clave-de-prueba")
+    monkeypatch.setattr(firms, "cuota_restante", None)
+    handler = _cuota({"limite": 5000})
+
+    assert firms.consultar_cuota(_client(handler)) is None
     assert firms.cuota_restante is None
-    assert not df.empty, "la ingesta debe continuar aunque la cuota sea ilegible"
+
+
+def test_una_respuesta_no_json_no_tumba_la_ingesta(monkeypatch):
+    monkeypatch.setattr(firms, "FIRMS_MAP_KEY", "clave-de-prueba")
+    monkeypatch.setattr(firms, "cuota_restante", None)
+    handler = _cuota("MAP_KEY is invalid or your have exceeded your transaction limit.")
+
+    assert firms.consultar_cuota(_client(handler)) is None

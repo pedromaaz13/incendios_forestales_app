@@ -502,14 +502,37 @@ comprueba que ninguna pareja de bboxes se solapa, más su contrapartida: que los
 puntos de control de cada territorio siguen cubiertos. Sin el segundo test,
 «no se solapan» se satisfaría borrando bboxes.
 
-### F7 · La cuota de FIRMS se ignoraba
+### F7 · La cuota de FIRMS se ignoraba — y el primer arreglo la inventó
 
-FIRMS devuelve `Remaining-request-endpoint` en cada respuesta y se tiraba. Agotar
-la cuota se manifiesta como **cero incendios**, que es exactamente el fallo que
-este proyecto existe para no cometer, y no habría aviso previo.
+Agotar la cuota de FIRMS se manifiesta como **cero incendios**, el fallo que este
+proyecto existe para no cometer, y no había aviso previo.
 
-**Solución.** Se lee, se guarda el mínimo de las peticiones en paralelo, se avisa
-por debajo de 50 y se publica en `sources.json`.
+**Primer arreglo, equivocado.** Se leía una cabecera `Remaining-request-endpoint`
+que yo había visto en las respuestas de **AEMET** y asumí que FIRMS también
+mandaba. No la manda: comprobado con la sonda el 30-07-2026, sus respuestas solo
+traen `x-frame-options` y `x-content-type-options`.
+
+El resultado pasó los tests —porque los tests inyectaban esa cabecera— llegó a
+producción, y publicó un campo `quota_remaining` que **salía siempre nulo**. Un
+dato inventado por asumir en lugar de mirar, exactamente el patrón que este
+documento existe para registrar. Se descubrió al verificar la salida real contra
+la URL de producción, no antes.
+
+**Arreglo definitivo.** FIRMS tiene un endpoint de estado aparte, cuyo esquema se
+sondeó antes de escribir nada:
+
+```json
+{ "transaction_limit": 5000, "current_transactions": 54,
+  "transaction_interval": "10 minutes" }
+```
+
+Se consulta antes de las descargas, se publican `quota_remaining` y `quota_limit`
+—el restante sin el límite no dice si vamos bien— y se avisa por debajo del 10 %.
+Cinco pruebas fijan el esquema, incluidas las dos formas en que puede fallar: un
+JSON con otras claves y una respuesta que no es JSON.
+
+**La lección concreta:** un test que construye el payload que el código espera no
+prueba que el origen mande eso. El fixture tiene que venir del origen.
 
 ### F1 · El scope `workflow` bloqueaba toda edición de Actions
 
