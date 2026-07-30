@@ -1,7 +1,7 @@
 """Framework de fuentes oficiales · RF-P-03, tabla 8.1 (filas 4-7).
 
 Se prueba **el framework**, no ninguna comunidad concreta: los endpoints siguen
-sin descubrir (`docs/descubrimiento-fuentes.md`) y no se inventan. El fixture
+sin descubrir (`docs/COMO-CONECTAR-LAS-FUENTES.md`) y no se inventan. El fixture
 `arcgis_framework_sample.json` es sintético y está marcado como tal; los
 fixtures de regresión reales que exige RF-P-03 son `tests/fixtures/{source_id}.json`
 y solo pueden crearse con una respuesta real de cada portal.

@@ -1,0 +1,60 @@
+# Qué hay en esta carpeta
+
+Cuatro documentos con cuatro propósitos distintos. Si dudas de cuál abrir, la
+pregunta que te estás haciendo decide:
+
+| Tu pregunta | Documento |
+|---|---|
+| ¿Qué tiene que hacer esto y cómo se comprueba? | **ESPECIFICACION.md** |
+| ¿Qué funciona hoy y qué toca ahora? | **ESTADO-DEL-PROYECTO.md** |
+| ¿Por qué está escrito así? ¿Qué se rompió ya? | **ERRORES-Y-SOLUCIONES.md** |
+| ¿Qué tengo que hacer yo para que haya datos reales? | **COMO-CONECTAR-LAS-FUENTES.md** |
+
+## En detalle
+
+**ESPECIFICACION.md** · el contrato. Requisitos numerados (`RF-P-*` pipeline,
+`RF-F-*` frontend, `RNF-*` no funcionales), pruebas exigidas y criterios de
+aceptación. Es la única fuente de verdad sobre lo que el sistema *debe* hacer;
+lo demás describe lo que *hace*. No se edita para justificar el código: si el
+código no lo cumple, el código está mal.
+
+**ESTADO-DEL-PROYECTO.md** · dónde estamos. Estado por módulo, recuentos reales
+de la última ejecución, y el plan ordenado por lo que más rinde. Todo lo que
+afirma está comprobado contra el repositorio o contra producción en su fecha de
+cabecera. Es el documento que se lee para retomar el trabajo.
+
+**ERRORES-Y-SOLUCIONES.md** · qué se rompió y por qué costó verlo. Empieza con
+la tabla de lo que sigue abierto. Se escribe porque el patrón se repite: casi
+ningún fallo de este proyecto dio un error — devolvieron un número plausible y
+equivocado, que es la forma que tiene de fallar un sistema de datos. La columna
+que más importa de cada entrada no es la solución, es *por qué no saltó nadie*.
+
+**COMO-CONECTAR-LAS-FUENTES.md** · la tarea pendiente que no puede hacer un
+agente. Los cinco adaptadores autonómicos tienen la URL vacía **a propósito**, y
+sacarlas exige abrir el visor de cada comunidad con las DevTools. Lleva un anexo
+técnico para cuando ya tengas una URL y toque escribir el adaptador, y un
+registro de lo ya comprobado — incluido lo que **no** sirve, que ahorra repetir
+trabajo descartado.
+
+## `evidencias/`
+
+Capturas de pantalla generadas por `web/tests/e2e/capturas.spec.ts`, no a mano.
+La sección 9 de la especificación exige que un requisito sin captura no se
+considere entregado.
+
+Se regeneran con:
+
+```bash
+cd web && npx playwright test tests/e2e/capturas.spec.ts
+```
+
+Al estar versionadas, un cambio visual no intencionado aparece en el diff de git.
+El coste es que son binarios y que algunas se reescriben en cada ejecución porque
+el panel de latencia muestra la hora.
+
+## Fuera de esta carpeta
+
+- **`CLAUDE.md`** (raíz) · contexto y reglas duras para agentes. Se lee primero.
+- **`README.md`** (raíz) · arquitectura y decisiones tomadas, con su porqué.
+- **`PROMPTS.md`** (raíz) · andamio de método, no documentación del producto:
+  prompts por hito para abrir sesiones de trabajo.

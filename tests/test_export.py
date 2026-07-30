@@ -256,7 +256,7 @@ def test_export_all_geojson_is_valid_featurecollection(tmp_outputs, pipeline_dat
 
 @pytest.mark.skip(
     reason=(
-        "RF-P-11 sin implementar (sesión 3 de docs/PROMPTS.md). Hoy export_all() "
+        "RF-P-11 sin implementar (sesión 3 de PROMPTS.md). Hoy export_all() "
         "escribe lo que le den, incluido un DataFrame vacío, y eso publica "
         "'no hay incendios' cuando lo que hay es una fuente caída. Falta la "
         "comparación contra la mediana de las últimas ejecuciones."

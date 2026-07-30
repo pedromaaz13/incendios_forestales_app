@@ -286,7 +286,7 @@ en el visor antes de las 14:35.
 
 ### RF-P-03 · Adaptadores de fuentes oficiales
 **Framework ya implementado** en `src/incendios/sources/`. Falta configurar cinco
-fuentes siguiendo `docs/descubrimiento-fuentes.md`:
+fuentes siguiendo `docs/COMO-CONECTAR-LAS-FUENTES.md`:
 
 | `source_id` | Comunidad | `precision_m` estimada | Notas |
 |---|---|---|---|

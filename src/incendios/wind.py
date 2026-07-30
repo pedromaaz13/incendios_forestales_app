@@ -2,7 +2,7 @@
 
 Open-Meteo es API pública documentada, sin registro ni clave. La URL está en la
 documentación oficial del servicio; no es un endpoint descubierto por ingeniería
-inversa, así que no aplica el protocolo de `docs/descubrimiento-fuentes.md`.
+inversa, así que no aplica el protocolo de `docs/COMO-CONECTAR-LAS-FUENTES.md`.
 
 **Convención de dirección.** Meteorología expresa la dirección del viento como
 *de dónde viene*: 0° es viento del norte, soplando hacia el sur. Es lo contrario
