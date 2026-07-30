@@ -88,9 +88,13 @@ INCIDENT_SCHEMA = [
     "municipio",
     "provincia",
     "igr_level",
+    # Los tres numéricos siguen en el contrato porque una fuente puede darlos
+    # desglosados. JCyL no: publica un listado de medios que se resume en texto,
+    # y trocearlo en tres números sería inventar una estructura que no existe.
     "resources_air",
     "resources_ground",
     "resources_people",
+    "resources_text",
     "n_hotspots",
     # Qué sensores vieron este incendio. Se publica porque cambia cómo hay que
     # leerlo: un incendio visto solo por MODIS tiene 1 km de resolución frente a
@@ -200,14 +204,33 @@ def match(
     official.loc[ok.values, "match_distance_m"] = joined.loc[ok, "_dist"].round(0).values
 
     # Propagación inversa: un cluster puede quedar confirmado por varias fuentes.
+    #
+    # Aquí viaja **todo lo que solo sabe el parte oficial**. Durante meses solo
+    # subían tres campos, y `igr_level` y los medios se quedaban por el camino:
+    # estaban en el contrato 4.3, el frontend los pintaba, y siempre salían
+    # nulos. No se notó porque el generador de demostración los rellenaba a mano
+    # después, así que la demo enseñaba «Nivel IGR 2 · 16 aéreos» y producción
+    # no enseñaba nada. Un dato que solo existe en la demo es peor que no
+    # tenerlo: parece que funciona.
     matched = official[official["fire_id"].notna()]
     if not matched.empty:
         by_fire = matched.groupby("fire_id").agg(
             confirmed_by=("source_id", lambda s: ",".join(sorted(set(s)))),
             official_name=("municipio", "first"),
             official_status=("status", _worst_status),
+            # El nivel más alto de los partes que confirman este incendio, por
+            # el mismo criterio que `_worst_status`: quedarse corto es el error
+            # caro. `max` sobre nulos los ignora.
+            official_level=("level", "max"),
+            official_provincia=("provincia", "first"),
+            # Los medios se concatenan si hay varias fuentes: dos comunidades
+            # que confirman el mismo frente despliegan cada una los suyos.
+            official_resources=("resources", _juntar_medios),
         )
         fires = fires.set_index("fire_id")
+        for columna in by_fire.columns:
+            if columna not in fires.columns:
+                fires[columna] = None
         fires.update(by_fire)
         fires = fires.reset_index()
 
@@ -225,6 +248,12 @@ _STATUS_RANK = {
     "extinguido": 1,
     "desconocido": 0,
 }
+
+
+def _juntar_medios(values: pd.Series) -> str:
+    """Une los medios de varias fuentes sin repetir ni dejar huecos."""
+    textos = [str(v).strip() for v in values if v is not None and str(v).strip()]
+    return " · ".join(dict.fromkeys(textos))
 
 
 def _worst_status(values: pd.Series) -> str:
@@ -314,6 +343,9 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
         # afirmable. Si la fuente no lo declara queda nulo, no "activo".
         orphans["status"] = orphans["official_status"]
         orphans["status_origen"] = "oficial"
+        orphans["official_level"] = orphans["level"]
+        orphans["official_resources"] = orphans["resources"]
+        orphans["official_provincia"] = orphans["provincia"]
 
     parts = [fires]
     if not orphans.empty:
@@ -327,6 +359,18 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
 
     # `id` es el nombre del contrato 4.3; `fire_id` es el interno del pipeline.
     out["id"] = out["fire_id"]
+
+    # Del nombre interno al del contrato. Sin esto, `igr_level` y los medios
+    # salían siempre nulos aunque la fuente los publicara: estaban en el
+    # esquema, el frontend los pintaba, y nadie los rellenaba nunca.
+    out["igr_level"] = pd.to_numeric(out.get("official_level"), errors="coerce")
+    out["resources_text"] = out.get("official_resources")
+
+    # La provincia del parte oficial gana a la del geocoding inverso: la declara
+    # quien gestiona el incendio, y además el geocoding no la tiene para los
+    # huérfanos, que no han pasado por la capa municipal.
+    if "official_provincia" in out.columns:
+        out["provincia"] = out["official_provincia"].fillna(out["provincia"])
     out["n_hotspots"] = out["n_hotspots"].fillna(0).astype(int)
     out["satellite_confirmed"] = out["satellite_confirmed"].astype(bool)
     out["official_confirmed"] = out["official_confirmed"].astype(bool)

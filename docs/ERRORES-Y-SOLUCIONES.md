@@ -61,6 +61,38 @@ El **invariante 9** aborta la publicación si algún incidente declara estado si
 que alguien rellene el hueco con `fillna("activo")` para que la interfaz «quede
 mejor».
 
+### A6 · El nivel IGR y los medios nunca llegaban al incidente
+
+`igr_level`, `resources_air`, `resources_ground` y `resources_people` están en el
+contrato 4.3 desde el principio. El frontend los pintaba. **Nadie los rellenaba
+nunca**: la propagación de `match` subía al cluster solo `confirmed_by`,
+`official_name` y `official_status`.
+
+Por qué costó verlo, y esta es la parte que importa: **el generador de datos de
+demostración los rellenaba a mano** justo después de construir los incidentes.
+
+```python
+incidents["igr_level"] = incidents["id"].map(todos["level"].to_dict())
+incidents["resources_text"] = incidents["id"].map(todos["resources"].to_dict())
+```
+
+Así que en desarrollo la ficha enseñaba «Nivel IGR 2 · 16 aéreos · 80 terrestres»
+y en producción los dos campos salían nulos. No había forma de notarlo mirando la
+demo, que es donde se mira.
+
+Solo salió al conectar la primera fuente oficial real y comprobar la salida
+publicada contra la URL: Villafranca del Bierzo aparecía con `igr_level: null`
+teniendo la Junta un nivel declarado.
+
+**Solución.** La propagación lleva ahora `level`, `resources` y `provincia`, con
+el mismo criterio del peor caso que `_worst_status`: con dos fuentes gana el
+nivel más alto y los medios se concatenan. Los huérfanos oficiales los toman de
+su propia fila. Y **el generador de demostración ya no los inventa**: si el
+pipeline no los propaga, la demo también sale vacía.
+
+**La lección, que es la misma que la de F7:** un dato que solo existe en el juego
+de demostración es peor que no tenerlo, porque parece que funciona.
+
 ### A1 · Dos partes oficiales se emparejaban con el mismo incendio
 
 **Gravedad: grave.** `merge.py::match`, detectado por
