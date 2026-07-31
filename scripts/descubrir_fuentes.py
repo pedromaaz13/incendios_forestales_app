@@ -44,6 +44,7 @@ import os
 import re
 import sys
 from collections import Counter
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -283,6 +284,62 @@ def listar_servicios(url: str) -> None:
         print(f"    Respuesta sin servicios ni capas. Claves: {list(datos)[:15]}")
 
 
+def _antiguedad_por_sensor(clave: str) -> None:
+    """Pide un día a cada sensor y dice cuál es su detección más reciente."""
+    from datetime import datetime
+
+    print("\n  Antigüedad del dato por sensor (petición de 1 día):")
+    ahora = datetime.now(UTC)
+
+    for sensor in ("VIIRS_SNPP_NRT", "VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT", "MODIS_NRT"):
+        url = (
+            "https://firms.modaps.eosdis.nasa.gov/api/area/csv/"
+            f"{clave}/{sensor}/-9.6,35.85,4.4,43.9/1"
+        )
+        try:
+            with cliente() as c:
+                r = c.get(url)
+            lineas = r.text.strip().splitlines()
+        except Exception as exc:
+            print(f"      {sensor:18} ✕ {exc}")
+            continue
+
+        if len(lineas) < 2:
+            print(f"      {sensor:18} sin filas")
+            continue
+
+        cabecera = lineas[0].split(",")
+        try:
+            i_fecha = cabecera.index("acq_date")
+            i_hora = cabecera.index("acq_time")
+        except ValueError:
+            print(f"      {sensor:18} ⚠ sin acq_date/acq_time: {cabecera}")
+            continue
+
+        marcas = []
+        for fila in lineas[1:]:
+            partes = fila.split(",")
+            try:
+                hhmm = partes[i_hora].zfill(4)
+                marcas.append(datetime.strptime(
+                    partes[i_fecha] + hhmm, "%Y-%m-%d%H%M"
+                ).replace(tzinfo=UTC))
+            except (ValueError, IndexError):
+                continue
+
+        if not marcas:
+            print(f"      {sensor:18} {len(lineas) - 1} filas, ninguna con fecha legible")
+            continue
+
+        reciente = max(marcas)
+        horas = (ahora - reciente).total_seconds() / 3600
+        aviso = "  ← RETRASADO" if horas > 6 else ""
+        print(
+            f"      {sensor:18} {len(marcas):>5} focos · más reciente "
+            f"{reciente:%d/%m %H:%M} UTC → {horas:.1f} h{aviso}"
+        )
+
+
 def comprobar_firms() -> None:
     """Verifica que FIRMS_MAP_KEY funciona antes de meterla en los secrets."""
     _titulo("Comprobando FIRMS_MAP_KEY")
@@ -323,6 +380,13 @@ def comprobar_firms() -> None:
 
     texto = r.text.strip()
     primera = texto.splitlines()[0] if texto else ""
+
+    # Antigüedad de lo que FIRMS acaba de servir, por sensor.
+    #
+    # Es lo que distingue «FIRMS va con retraso» de «tenemos un bug». Sin esto,
+    # un dato de 20 h se lee igual en los dos casos y no hay forma de saber a
+    # quién mirar.
+    _antiguedad_por_sensor(clave)
 
     # FIRMS contesta 200 con texto plano cuando la clave falla: hay que mirar el
     # contenido, no el código de estado. Es el fallo que RF-P-01 vigila.
