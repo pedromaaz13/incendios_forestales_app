@@ -36,7 +36,7 @@ incidentes llevan estado declarado, nivel IGR y medios.
 
 ## A · Lógica de fusión y del pipeline
 
-### A7 · Una fuente muerta se publica como sana · **ABIERTO**
+### A7 · Una fuente muerta se publicaba como sana · **RESUELTO**
 
 El 31-07-2026 FIRMS dejó de servir VIIRS: **cero filas en 24 h** para los tres
 satélites, mientras MODIS seguía dando 11 focos en el mismo bbox. VIIRS detecta a
@@ -64,8 +64,28 @@ el número rojo de «datos satelitales», que un usuario no sabe interpretar —
 hecho dudó quien construyó la aplicación. El panel de fuentes, que existe
 precisamente para decir qué está roto, decía que todo iba bien.
 
-**Solución propuesta**, bloque 0 del plan: `data_age_seconds` por fuente, y
-`status` en `stale` cuando el dato supera la cadencia esperada del sensor.
+**Solución.** Dos edades separadas y publicadas: `age_seconds` (cuándo
+conseguimos descargar) y `data_age_seconds` (cuándo se tomó el dato más
+reciente). `status` pasa a `stale` cuando el dato supera la cadencia declarada de
+esa fuente — 12 h para los polares, 2 h para SEVIRI — aunque la descarga vaya
+bien. `stale_reason` dice cuál de los dos ha fallado, porque solo uno se arregla
+desde aquí.
+
+La cadencia es opcional y solo se declara donde se conoce: que la Junta no
+publique un incendio nuevo en 20 h es una buena noticia, no una avería.
+
+### E5 · Tres pruebas E2E distintas fallaban en cada ejecución
+
+Siempre de la capa de focos, y las tres pasaban aisladas. La capa se monta de
+forma diferida y las pruebas lo suplían con `waitForTimeout(1500)`: suficiente en
+una máquina descargada, insuficiente con la suite entera corriendo.
+
+**Un tiempo fijo no es una espera, es una apuesta.**
+
+**Solución.** `abrir()` espera a que la capa exista **y tenga filtro**, y
+`capaConFeatures` espera a que MapLibre haya pintado antes de consultar lo
+renderizado. La suite pasó de fallar 3 de 79 por ejecución a 79/79, y de 4,5 a
+3,2 minutos: esperar a la condición es además más rápido que esperar de más.
 
 ### A0 · «Activo» se afirmaba sin que nadie lo hubiera declarado
 
