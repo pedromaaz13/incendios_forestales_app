@@ -24,16 +24,25 @@
       <!-- RF-F-05. Los dos números, uno al lado del otro. Separarlos
            visualmente es lo que impide confundirlos. -->
       <div class="latencia" id="panel-latencia">
-        <div class="latencia__bloque">
+        <!-- Los dos números son distintos a propósito y confundirlos es el
+             error que este visor existe para no cometer: un pipeline que corrió
+             hace 2 minutos puede estar enseñando lo que se vio ayer. El `title`
+             está porque hasta quien construyó la aplicación dudó de cuál era
+             cuál. -->
+        <div class="latencia__bloque"
+             title="Cuánto hace que un satélite vio lo que estás mirando. No depende de nosotros: depende de cuándo pase y de que su operador publique.">
           <span class="latencia__rotulo">Datos satelitales</span>
           <strong class="latencia__valor" id="latencia-dato" aria-live="polite">—</strong>
           <span class="latencia__pie" id="latencia-dato-pie">sin datos</span>
         </div>
         <div class="latencia__sep" aria-hidden="true"></div>
-        <div class="latencia__bloque">
+        <div class="latencia__bloque"
+             title="Cuánto hace que nuestro pipeline se ejecutó por última vez. Esto sí depende de nosotros.">
           <span class="latencia__rotulo">Actualización</span>
           <strong class="latencia__valor" id="latencia-pipeline" aria-live="polite">—</strong>
-          <span class="latencia__pie">refresco cada 10 min</span>
+          <!-- El cron de `publicar.yml` corre cada 30 min. Ponía 10 desde una
+               versión anterior en la que sí era ese el intervalo. -->
+          <span class="latencia__pie">refresco cada 30 min</span>
         </div>
       </div>
     </header>

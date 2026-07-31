@@ -4,8 +4,23 @@
 responder" en lugar de "Castilla-La Mancha: 0 incendios". La diferencia entre
 esas dos frases es todo el proyecto.
 
-El estado se deriva de dos cosas y solo dos: si el último intento tuvo éxito, y
-cuánto hace del último éxito comparado con el TTL declarado por la fuente.
+El estado responde a **dos preguntas distintas**, y confundirlas fue el fallo A7:
+
+  1. ¿La descarga funcionó?  → `error` si no.
+  2. ¿El dato es fresco?     → `stale` si no.
+
+La segunda no se comprobaba. El 31-07-2026 FIRMS dejó de servir VIIRS —cero filas
+en 24 h para los tres satélites, mientras MODIS daba once focos en el mismo
+recuadro— y el panel siguió diciendo `ok` con «edad 15 s». La descarga sí
+funcionaba: se pide una ventana de tres días y FIRMS devolvía su archivo. Una
+fuente que dejó de publicar parecía sana porque seguíamos bajando lo viejo.
+
+Por eso hay dos edades y las dos se publican:
+
+  · `age_seconds`       — cuánto hace que **conseguimos descargar**.
+  · `data_age_seconds`  — cuánto hace que **se tomó el dato más reciente**.
+
+La segunda es la que importa para saber si una fuente sigue viva.
 """
 
 from __future__ import annotations
@@ -56,22 +71,70 @@ class SourceHealth:
     quota_remaining: int | None = None
     quota_limit: int | None = None
 
+    # Marca del dato más reciente que ha entregado la fuente, no de la descarga.
+    # `None` cuando no aplica: una fuente oficial sin incendios hoy está
+    # legítimamente vacía, no obsoleta.
+    latest_data_at: datetime | None = None
+
+    # Cuánto puede pasar sin dato nuevo antes de considerarla parada. Se declara
+    # por fuente porque la cadencia no es la misma: VIIRS pasa cada 6-12 h y la
+    # DGT publica en continuo. `None` desactiva la comprobación.
+    max_data_age_seconds: int | None = None
+
     def age_seconds(self, now: datetime) -> int | None:
+        """Cuánto hace que la descarga funcionó."""
         if self.last_success_at is None:
             return None
         return max(0, int((now - self.last_success_at).total_seconds()))
+
+    def data_age_seconds(self, now: datetime) -> int | None:
+        """Cuánto hace que se tomó el dato más reciente que sirvió la fuente."""
+        if self.latest_data_at is None:
+            return None
+        return max(0, int((now - self.latest_data_at).total_seconds()))
+
+    def data_is_stale(self, now: datetime) -> bool:
+        """La fuente responde pero lleva demasiado sin publicar nada nuevo."""
+        if self.max_data_age_seconds is None:
+            return False
+        edad = self.data_age_seconds(now)
+        return edad is not None and edad > self.max_data_age_seconds
 
     def status(self, now: datetime) -> str:
         if not self.configured:
             return STATUS_DISABLED
         if self.error is not None:
             return STATUS_ERROR
+
         edad = self.age_seconds(now)
         if edad is None:
             return STATUS_ERROR
         if edad > self.ttl_seconds * STALE_TTL_MULTIPLIER:
             return STATUS_STALE
+
+        # Descarga correcta pero dato parado. Es el caso de A7: sin esta rama,
+        # una fuente muerta se publica como sana indefinidamente.
+        if self.data_is_stale(now):
+            return STATUS_STALE
+
         return STATUS_OK
+
+    def stale_reason(self, now: datetime) -> str | None:
+        """Por qué está rancia, en una frase para el panel.
+
+        Sin esto, el panel dice «rancio» y el usuario no sabe si es que no
+        respondemos nosotros o si la fuente ha dejado de publicar. Son problemas
+        distintos y solo uno se arregla desde aquí.
+        """
+        if self.status(now) != STATUS_STALE:
+            return None
+
+        if self.data_is_stale(now):
+            horas = (self.data_age_seconds(now) or 0) / 3600
+            return f"responde, pero sin datos nuevos desde hace {horas:.0f} h"
+
+        minutos = (self.age_seconds(now) or 0) / 60
+        return f"sin respuesta correcta desde hace {minutos:.0f} min"
 
     def to_dict(self, now: datetime) -> dict:
         return {
@@ -91,6 +154,12 @@ class SourceHealth:
             "attribution": self.attribution,
             "quota_remaining": self.quota_remaining,
             "quota_limit": self.quota_limit,
+            # Las dos edades viajan por separado a propósito: el frontend tiene
+            # que poder distinguir «no hemos podido descargar» de «la fuente ha
+            # dejado de publicar».
+            "data_age_seconds": self.data_age_seconds(now),
+            "max_data_age_seconds": self.max_data_age_seconds,
+            "stale_reason": self.stale_reason(now),
         }
 
 

@@ -234,12 +234,30 @@ def _informe_de_salud(
     informe = health_mod.HealthReport()
 
     instrumento = hotspots["instrument"].astype(str).str.upper()
-    for source_id, nombre, prefijo, precision, ttl, critica in (
-        ("firms_viirs", "NASA FIRMS · VIIRS", "VIIRS", 375.0, 600, True),
-        ("firms_modis", "NASA FIRMS · MODIS", "MODIS", 1000.0, 600, False),
-        ("seviri", "EUMETSAT LSA-SAF · SEVIRI", "SEVIRI", 3000.0, 900, False),
+    visto = pd.to_datetime(hotspots.get("acq_dt"), errors="coerce", utc=True)
+
+    # Cuánto puede pasar un sensor sin publicar antes de darlo por parado.
+    #
+    # VIIRS y MODIS van en órbita polar y ven España 2-4 veces al día, así que
+    # 12 h cubre el hueco entre pasadas con margen: pasado eso, o no hay nada
+    # que arda en toda España —improbable en julio— o la fuente se ha parado.
+    # SEVIRI es geoestacionario y publica cada 15 min, de ahí las 2 h.
+    #
+    # El umbral existe por A7: el 31-07-2026 FIRMS dejó de servir VIIRS y el
+    # panel lo siguió dando por bueno durante 20 h porque la descarga del
+    # archivo de 3 días seguía funcionando.
+    for source_id, nombre, prefijo, precision, ttl, critica, max_dato in (
+        ("firms_viirs", "NASA FIRMS · VIIRS", "VIIRS", 375.0, 600, True, 12 * 3600),
+        ("firms_modis", "NASA FIRMS · MODIS", "MODIS", 1000.0, 600, False, 12 * 3600),
+        ("seviri", "EUMETSAT LSA-SAF · SEVIRI", "SEVIRI", 3000.0, 900, False, 2 * 3600),
     ):
-        n = int(instrumento.str.startswith(prefijo).sum())
+        del_sensor = instrumento.str.startswith(prefijo)
+        n = int(del_sensor.sum())
+
+        # La marca del dato más reciente **de ese sensor**, no del conjunto: es
+        # justo lo que distingue «VIIRS parado» de «MODIS tapa el hueco».
+        marcas = visto[del_sensor.to_numpy()].dropna() if n else None
+        ultimo_dato = marcas.max().to_pydatetime() if marcas is not None and len(marcas) else None
         informe.add(health_mod.SourceHealth(
             id=source_id, name=nombre, region="España", kind="satelite",
             critical=critica, ttl_seconds=ttl, precision_m=precision,
@@ -257,6 +275,8 @@ def _informe_de_salud(
             # El límite acompaña al restante: «4.946» sin saber de cuántos no
             # dice si vamos bien o mal.
             quota_limit=firms.cuota_limite if prefijo != "SEVIRI" else None,
+            latest_data_at=ultimo_dato,
+            max_data_age_seconds=max_dato,
         ))
 
     resultados = {

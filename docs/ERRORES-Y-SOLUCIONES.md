@@ -20,18 +20,72 @@ tarea. Esto es lo que hay que revisar:
 
 | | Qué | Quién lo desbloquea |
 |---|---|---|
-| **C3** | Cinco endpoints autonómicos sin descubrir: `112cv`, `infocam`, `jcyl` y dos más | Requiere DevTools sobre el visor autonómico · procedimiento en `COMO-CONECTAR-LAS-FUENTES.md` |
+| **C3** | Dos endpoints autonómicos sin descubrir: `112cv` e `infocam` | Requiere DevTools sobre el visor autonómico · procedimiento en `COMO-CONECTAR-LAS-FUENTES.md` |
+| **C5** | `bombers` e `infoca` sin feed público en tiempo real conocido | Nadie por ahora: la evidencia apunta a que no existe |
+| **B5** | Una fuente que deja de publicar sale como `ok`: el estado mide la edad de la **descarga**, no la del **dato** | Nosotros · bloque 0 del plan |
+| **C6** | FIRMS no sirve VIIRS desde el 30-07-2026 14:27 (cero filas en 24 h, los tres satélites) | Nadie: es su feed NRT. MODIS sigue dando datos |
 | **C2** | EFFIS caído desde el 27-07-2026 (`Cannot create OCI Handlers`) | Nadie: es su base de datos Oracle. `scripts/vigilar_effis.py` avisa si vuelve |
 
-Ninguno de los dos rompe el visor: un fallo de fuente no tumba el pipeline, y los
+Ninguno rompe el visor: un fallo de fuente no tumba el pipeline, y los
 adaptadores sin endpoint aparecen como `disabled` con su motivo en el panel de
 fuentes. La consecuencia real es de cobertura, no de corrección: **hoy no hay
-ningún parte oficial en producción**, así que todos los incendios se publican como
-detección satelital sin confirmar.
+ningún parte oficial de esas comunidades**. Castilla y León sí publica: 23 de 76
+incidentes llevan estado declarado, nivel IGR y medios.
 
 ---
 
 ## A · Lógica de fusión y del pipeline
+
+### A7 · Una fuente muerta se publicaba como sana · **RESUELTO**
+
+El 31-07-2026 FIRMS dejó de servir VIIRS: **cero filas en 24 h** para los tres
+satélites, mientras MODIS seguía dando 11 focos en el mismo bbox. VIIRS detecta a
+375 m y MODIS a 1 km, así que cero detecciones donde MODIS ve once no es posible.
+
+El panel de fuentes decía, mientras tanto:
+
+```
+NASA FIRMS · VIIRS   ok · edad declarada 15 s · 883 registros
+```
+
+**La causa.** `SourceHealth.age_seconds` mide desde `last_success_at`, y el
+pipeline lo rellena con la hora de la ejecución en cuanto la descarga devuelve
+algo:
+
+```python
+last_success_at=inicio if n else None
+```
+
+Se pide una ventana de 3 días, así que FIRMS siempre devuelve filas de su
+archivo. La descarga «funciona» siempre y la fuente parece sana indefinidamente.
+
+**Por qué importa más que otros.** El único sitio donde el problema asomaba era
+el número rojo de «datos satelitales», que un usuario no sabe interpretar — de
+hecho dudó quien construyó la aplicación. El panel de fuentes, que existe
+precisamente para decir qué está roto, decía que todo iba bien.
+
+**Solución.** Dos edades separadas y publicadas: `age_seconds` (cuándo
+conseguimos descargar) y `data_age_seconds` (cuándo se tomó el dato más
+reciente). `status` pasa a `stale` cuando el dato supera la cadencia declarada de
+esa fuente — 12 h para los polares, 2 h para SEVIRI — aunque la descarga vaya
+bien. `stale_reason` dice cuál de los dos ha fallado, porque solo uno se arregla
+desde aquí.
+
+La cadencia es opcional y solo se declara donde se conoce: que la Junta no
+publique un incendio nuevo en 20 h es una buena noticia, no una avería.
+
+### E5 · Tres pruebas E2E distintas fallaban en cada ejecución
+
+Siempre de la capa de focos, y las tres pasaban aisladas. La capa se monta de
+forma diferida y las pruebas lo suplían con `waitForTimeout(1500)`: suficiente en
+una máquina descargada, insuficiente con la suite entera corriendo.
+
+**Un tiempo fijo no es una espera, es una apuesta.**
+
+**Solución.** `abrir()` espera a que la capa exista **y tenga filtro**, y
+`capaConFeatures` espera a que MapLibre haya pintado antes de consultar lo
+renderizado. La suite pasó de fallar 3 de 79 por ejecución a 79/79, y de 4,5 a
+3,2 minutos: esperar a la condición es además más rápido que esperar de más.
 
 ### A0 · «Activo» se afirmaba sin que nadie lo hubiera declarado
 
@@ -242,7 +296,14 @@ fuente no tumba la ejecución.
 
 ### C3 · Cinco endpoints autonómicos sin descubrir
 
-**ABIERTO.** `112cv`, `infocam`, `jcyl` y dos más siguen con la URL vacía.
+**PARCIALMENTE ABIERTO.** `jcyl` se descubrió el 30-07-2026 y publica 26 partes
+oficiales. Quedan `112cv` e `infocam`.
+
+`bombers` e `infoca` se dan por **no disponibles**, no por pendientes: el feed
+del visor de referencia no los lleva —tiene incendios en Andalucía y Cataluña,
+pero solo detectados por satélite— y el portal de datos abiertos catalán publica
+agregados mensuales sin coordenadas. Probablemente no existe un feed público en
+tiempo real de esas dos comunidades.
 
 Esto **no es un error, es una regla**. Los adaptadores están vacíos a propósito.
 Poner una URL plausible sin verificarla produce un 404 silencioso que el visor

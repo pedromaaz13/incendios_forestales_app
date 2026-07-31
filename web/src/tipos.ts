@@ -137,6 +137,12 @@ export interface Fuente {
   kind: 'oficial' | 'satelite' | 'contexto';
   critical: boolean;
   status: EstadoFuente;
+  /** Antigüedad del **dato** más reciente. Distinta de `age_seconds`, que es la
+   *  de la descarga: una fuente puede bajarse bien y haber dejado de publicar. */
+  data_age_seconds: number | null;
+  max_data_age_seconds: number | null;
+  /** Por qué está rancia, en una frase. Nulo si no lo está. */
+  stale_reason: string | null;
   last_success_at: string | null;
   age_seconds: number | null;
   ttl_seconds: number;
