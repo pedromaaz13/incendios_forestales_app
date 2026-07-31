@@ -1,7 +1,7 @@
 import type maplibregl from 'maplibre-gl';
 import { expect, test } from '@playwright/test';
 
-import { abrir, conManifiesto } from './ayuda';
+import { abrir, capaConFeatures, conManifiesto } from './ayuda';
 
 /**
  * Escenarios E2E de la sección 8.4.
@@ -309,7 +309,7 @@ test('los incidentes se agrupan con su número a zoom bajo', async ({ page }) =>
   // donde un "638" mezcla incendios, quemas y falsos positivos. Los incidentes
   // ya están validados, así que un "3" sí es una afirmación sostenible.
   await abrir(page, '/?lat=40.2&lon=-4.0&zoom=6');
-  await page.waitForTimeout(1500);
+  await capaConFeatures(page, 'incidentes-grupo');
 
   const grupos = await page.evaluate(() =>
     (window as never as { __mapa?: maplibregl.Map }).__mapa
@@ -786,4 +786,69 @@ test('la ficha dice a qué distancia está el pueblo más cercano', async ({ pag
   await expect(ficha).toContainText('Núcleo habitado más cercano');
   await expect(ficha).toContainText('km');
   await expect(ficha).toContainText('no a la primera casa');
+});
+
+test('una fuente que responde pero dejó de publicar sale como rancia', async ({ page }) => {
+  // A7 · el 31-07-2026 FIRMS dejó de servir VIIRS y el panel decía «correcto ·
+  // 883 registros · hace 15 s», porque la descarga del archivo de tres días
+  // seguía funcionando. Una fuente muerta parecía sana.
+  await page.route('**/live/sources.json', (ruta) =>
+    ruta.fulfill({
+      json: {
+        generated_at: new Date().toISOString(),
+        sources: [
+          {
+            id: 'firms_viirs', name: 'NASA FIRMS · VIIRS', region: 'España',
+            kind: 'satelite', critical: true, status: 'stale',
+            last_success_at: new Date().toISOString(), age_seconds: 15,
+            ttl_seconds: 600, records: 883, precision_m: 375, error: null,
+            consecutive_failures: 0, attribution: 'NASA FIRMS',
+            quota_remaining: 4996, quota_limit: 5000,
+            data_age_seconds: 72000, max_data_age_seconds: 43200,
+            stale_reason: 'responde, pero sin datos nuevos desde hace 20 h',
+          },
+        ],
+      },
+    }),
+  );
+  await abrir(page);
+
+  const fuente = page.locator('.fuente', { hasText: 'VIIRS' }).first();
+
+  await expect(fuente).toContainText('sin datos nuevos desde hace 20 h');
+  // Lo que NO debe decir: que todo va bien porque bajamos el fichero.
+  await expect(fuente).not.toContainText('883 registros · hace 15 s');
+});
+
+test('la cabecera explica qué significa cada latencia', async ({ page }) => {
+  // Confundir las dos es el error que este visor existe para no cometer, y hasta
+  // quien lo construyó dudó de cuál era cuál.
+  await abrir(page);
+
+  const dato = page.locator('.latencia__bloque', { hasText: 'Datos satelitales' });
+  const ejecucion = page.locator('.latencia__bloque', { hasText: 'Actualización' });
+
+  await expect(dato).toHaveAttribute('title', /satélite vio/);
+  await expect(ejecucion).toHaveAttribute('title', /pipeline/);
+});
+
+test('el intervalo declarado coincide con el del cron', async ({ page }) => {
+  // Decía «cada 10 min» desde una versión anterior; el cron corre cada 30.
+  await abrir(page);
+
+  await expect(page.locator('.latencia__pie').last()).toHaveText('refresco cada 30 min');
+});
+
+test('la antigüedad se desglosa por sensor, no solo la peor', async ({ page }) => {
+  // Con un único número, «19 h 41 min» se lee como que todo está viejo. El
+  // 31-07-2026 esa era la cifra y MODIS tenía 5,6 h: lo parado era VIIRS.
+  //
+  // Se comprueba que hay **más de un sensor** y su antigüedad, no unos nombres
+  // concretos: qué sensores haya depende del día y de qué publique cada uno.
+  await abrir(page);
+
+  const pie = await page.locator('#latencia-dato-pie').innerText();
+
+  expect(pie.split('·').length).toBeGreaterThan(1);
+  expect(pie).toMatch(/\d+\s*(min|h)/);
 });

@@ -174,6 +174,11 @@ def test_block_matches_the_4_2_contract():
         # distingue de "cero peticiones restantes".
         "quota_remaining",
         "quota_limit",
+        # Las dos edades viajan por separado: el frontend tiene que poder
+        # distinguir «no hemos podido descargar» de «la fuente dejó de publicar».
+        "data_age_seconds",
+        "max_data_age_seconds",
+        "stale_reason",
     }
     assert bloque["last_success_at"].endswith("Z")
     assert bloque["age_seconds"] == 120
@@ -300,3 +305,79 @@ def test_sin_cuota_declarada_es_nulo_y_no_cero():
     Confundirlos pintaría de rojo Open-Meteo y la DGT, que no tienen cuota.
     """
     assert _fuente().to_dict(NOW)["quota_remaining"] is None
+
+
+# --- A7 · una fuente muerta no puede salir como sana ------------------------
+#
+# El 31-07-2026 FIRMS dejó de servir VIIRS: cero filas en 24 h para los tres
+# satélites, mientras MODIS daba once focos en el mismo recuadro. El panel siguió
+# diciendo `ok` con «edad 15 s», porque la descarga del archivo de 3 días
+# funcionaba perfectamente.
+#
+# El único sitio donde el problema asomaba era el número rojo de la cabecera, que
+# un usuario no sabe interpretar — de hecho dudó quien construyó la aplicación.
+
+
+def _fuente_viirs(**overrides) -> health.SourceHealth:
+    base = dict(
+        id="firms_viirs", name="NASA FIRMS · VIIRS", region="España",
+        kind="satelite", critical=True, ttl_seconds=600, records=883,
+        last_success_at=NOW,          # la descarga acaba de funcionar
+        max_data_age_seconds=12 * 3600,
+    )
+    return health.SourceHealth(**{**base, **overrides})
+
+
+def test_descarga_correcta_con_dato_parado_es_stale():
+    """El caso exacto de A7: bajamos bien un archivo que ya no se actualiza."""
+    fuente = _fuente_viirs(latest_data_at=NOW - timedelta(hours=20))
+
+    assert fuente.status(NOW) == STATUS_STALE
+
+
+def test_descarga_correcta_con_dato_fresco_es_ok():
+    fuente = _fuente_viirs(latest_data_at=NOW - timedelta(hours=5))
+
+    assert fuente.status(NOW) == STATUS_OK
+
+
+def test_el_motivo_distingue_quien_ha_fallado():
+    """«rancio» a secas no dice si el fallo es nuestro o de la fuente, y solo
+    uno de los dos se puede arreglar desde aquí."""
+    parada = _fuente_viirs(latest_data_at=NOW - timedelta(hours=20))
+    sin_bajar = _fuente_viirs(
+        last_success_at=NOW - timedelta(hours=3), latest_data_at=NOW
+    )
+
+    assert "sin datos nuevos" in parada.stale_reason(NOW)
+    assert "sin respuesta" in sin_bajar.stale_reason(NOW)
+
+
+def test_una_fuente_sana_no_tiene_motivo():
+    assert _fuente_viirs(latest_data_at=NOW).stale_reason(NOW) is None
+
+
+def test_sin_cadencia_declarada_no_se_comprueba_el_dato():
+    """Una fuente oficial sin incendios hoy está legítimamente vacía, no parada.
+
+    Por eso `max_data_age_seconds` es opcional y solo se pone donde la cadencia
+    es conocida: los satélites pasan cada tantas horas, pero que la Junta no
+    publique un incendio nuevo en 20 h es una buena noticia, no una avería.
+    """
+    oficial = health.SourceHealth(
+        id="jcyl", name="Junta", region="Castilla y León", kind="oficial",
+        ttl_seconds=300, last_success_at=NOW,
+        latest_data_at=NOW - timedelta(days=5),
+        max_data_age_seconds=None,
+    )
+
+    assert oficial.status(NOW) == STATUS_OK
+
+
+def test_la_edad_del_dato_se_publica_aunque_la_fuente_este_sana():
+    """Es telemetría: permite ver que una fuente se acerca al umbral antes de
+    cruzarlo, en vez de enterarse cuando ya está en ámbar."""
+    bloque = _fuente_viirs(latest_data_at=NOW - timedelta(hours=5)).to_dict(NOW)
+
+    assert bloque["data_age_seconds"] == 5 * 3600
+    assert bloque["max_data_age_seconds"] == 12 * 3600

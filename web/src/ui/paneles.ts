@@ -50,11 +50,26 @@ export function pintarLatencia(manifiesto: Manifiesto | null): void {
   valorDato.textContent = duracion(edadDato);
   valorDato.dataset.nivel = nivelLatencia(edadDato);
 
-  // Se nombra el sensor que marca el peor caso: "2 h 19 min" sin decir de qué
-  // no permite juzgar si es normal (VIIRS entre pasadas) o un problema.
-  const familias = Object.entries(manifiesto.data_age_seconds ?? {});
-  const peor = familias.sort((a, b) => b[1] - a[1])[0];
-  pieDato.textContent = peor ? `último dato de ${nombreFuente(peor[0])}` : 'sin datos';
+  // Se desglosa por sensor, no solo el peor.
+  //
+  // Con un único número, «19 h 41 min» se lee como que TODO está viejo. El
+  // 31-07-2026 esa era la cifra y MODIS tenía 5,6 h: lo que estaba parado era
+  // VIIRS. Enseñar los dos convierte una alarma difusa en un diagnóstico.
+  //
+  // El titular sigue siendo el peor caso, que es la regla del proyecto: enseñar
+  // el mejor sería tranquilizar sin fundamento.
+  const familias = Object.entries(manifiesto.data_age_seconds ?? {})
+    .sort((a, b) => b[1] - a[1]);
+
+  if (!familias.length) {
+    pieDato.textContent = 'sin datos';
+  } else if (familias.length === 1) {
+    pieDato.textContent = `último dato de ${nombreFuente(familias[0][0])}`;
+  } else {
+    pieDato.textContent = familias
+      .map(([id, edad]) => `${nombreFuente(id)} ${duracion(edad)}`)
+      .join(' · ');
+  }
 
   // La edad real de la ejecución se recalcula desde `generated_at`, no se lee
   // de `pipeline_age_seconds`: ese número envejece mientras la pestaña sigue
@@ -103,12 +118,21 @@ export function pintarFuentes(salud: Salud | null): void {
 
 function filaFuente(f: Fuente): string {
   const edad = f.age_seconds === null ? 'sin éxito reciente' : haceCuanto(f.age_seconds);
+  // `stale_reason` manda cuando existe: dice **quién** ha fallado. «rancio» a
+  // secas no distingue «no hemos podido descargar» de «la fuente ha dejado de
+  // publicar», y solo el primero se arregla desde aquí.
+  //
+  // El caso que lo motiva: el 31-07-2026 FIRMS dejó de servir VIIRS y el panel
+  // decía «correcto · 883 registros · hace 15 s», porque la descarga del
+  // archivo de tres días seguía funcionando.
   const detalle =
     f.status === 'error'
       ? texto(f.error ?? 'sin respuesta')
       : f.status === 'disabled'
         ? 'endpoint sin configurar'
-        : `${numero(f.records)} registros · ${edad}`;
+        : f.stale_reason
+          ? texto(f.stale_reason)
+          : `${numero(f.records)} registros · ${edad}`;
 
   return `
     <li class="fuente fuente--${f.status}">
