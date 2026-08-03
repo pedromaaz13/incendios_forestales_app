@@ -967,3 +967,67 @@ test('el terreno no desaparece al acercar el mapa', async ({ page }) => {
   );
   expect(sigue).toBe(true);
 });
+
+test('un cruce filtra el mapa y la lista a la vez', async ({ page }) => {
+  // Si discreparan, alguien vería una tarjeta de un incendio que no está en el
+  // mapa y no sabría a cuál creer.
+  await abrir(page);
+
+  const antes = await page.locator('.tarjeta').count();
+  await page.locator('[data-cruce="confirmado"]').click();
+  await page.waitForTimeout(900);
+
+  const despues = await page.locator('.tarjeta').count();
+  expect(despues).toBeLessThan(antes);
+
+  const filtroMapa = await page.evaluate(() => {
+    const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    return JSON.stringify(mapa?.getFilter('incidentes-simbolo'));
+  });
+  expect(filtroMapa).toContain('literal');
+});
+
+test('el cruce dice de cuántos, no solo cuántos', async ({ page }) => {
+  // «3» a secas no informa si no se sabe de cuántos sale.
+  await abrir(page);
+  await page.locator('[data-cruce="confirmado"]').click();
+  await page.waitForTimeout(900);
+
+  await expect(page.locator('#cruce-resultado')).toContainText(/de \d+ incendios visibles|Ninguno de los/);
+});
+
+test('volver a pulsar el cruce lo apaga', async ({ page }) => {
+  // Quedarse atrapado en un filtro es la forma más fácil de creer que hay menos
+  // incendios de los que hay.
+  await abrir(page);
+  const total = await page.locator('.tarjeta').count();
+
+  const boton = page.locator('[data-cruce="confirmado"]');
+  await boton.click();
+  await page.waitForTimeout(700);
+  await boton.click();
+  await page.waitForTimeout(700);
+
+  await expect(boton).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.locator('.tarjeta').count()).toBe(total);
+});
+
+test('el panel de cruces avisa de que no es para decidir', async ({ page }) => {
+  // Un panel que cruza variables invita a leerse como herramienta operativa, y
+  // no lo somos: sin autoridad de emergencias y sin tiempo real.
+  await abrir(page);
+
+  const cruces = page.locator('#cruces');
+  await expect(cruces).toContainText('entender');
+  await expect(cruces).toContainText('112');
+});
+
+test('cada cruce enseña qué combinación lo responde', async ({ page }) => {
+  // Sin el criterio, el botón sería magia. Con él, además de filtrar, enseña
+  // qué campos hay y se pueden cruzar.
+  await abrir(page);
+
+  const cruce = page.locator('[data-cruce="monte-cerca-viento"]');
+  await expect(cruce.locator('.cruce__criterio')).toContainText('forestal');
+  await expect(cruce.locator('.cruce__criterio')).toContainText('km/h');
+});

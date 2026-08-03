@@ -89,14 +89,22 @@ export function aplicar(
   mapa: MapaGL,
   f: EstadoFiltros,
   dia: string | null = null,
+  idsDelCruce: string[] | null = null,
 ): void {
   // `!has point_count` va en todos los filtros de estas capas: sin él, al
   // aplicar un filtro se perdería la exclusión de los globos de grupo y los
   // incidentes agrupados se pintarían dos veces, como globo y como punto.
+  // El cruce restringe a una lista de identificadores concreta. Se aplica sobre
+  // el mapa **y** sobre la lista, y con el mismo criterio: si discreparan,
+  // alguien vería una tarjeta de un incendio que no está en el mapa y no sabría
+  // a cuál creer — que es el mismo motivo por el que `pasaElFiltro` existe.
   const incidentes = [
     'all',
     ['!', ['has', 'point_count']],
     filtroIncidentes(f),
+    ...(idsDelCruce
+      ? [['in', ['get', 'id'], ['literal', idsDelCruce]] as ExpressionSpecification]
+      : []),
   ] as unknown as FilterSpecification;
 
   for (const capa of [CAPA_INCIDENTES, CAPA_INCERTIDUMBRE]) {

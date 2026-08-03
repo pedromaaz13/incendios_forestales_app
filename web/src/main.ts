@@ -51,6 +51,12 @@ import {
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
 import { agruparPorDia, pintarEvolutivo, type DiaEvolutivo } from './ui/evolutivo';
+import {
+  type Cruce,
+  aplicarCruce,
+  construirCruces,
+  pintarResultado,
+} from './ui/cruces';
 import { abrirFicha, cerrarFicha, registrarFocos } from './ui/ficha';
 import {
   FILTROS_INICIALES,
@@ -88,6 +94,8 @@ interface Estado {
   filtros: EstadoFiltros;
   dias: DiaEvolutivo[];
   diaElegido: string | null;
+  /** Cruce activo, o `null` si se ve todo. */
+  cruce: Cruce | null;
 }
 
 const estado: Estado = {
@@ -103,6 +111,7 @@ const estado: Estado = {
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
   dias: [],
   diaElegido: null,
+  cruce: null,
 };
 
 /**
@@ -211,6 +220,12 @@ async function arrancar(): Promise<void> {
   mapa.on('zoom', () => avisarSensoresSegunZoom(mapa.getZoom(), ZOOM_HOTSPOTS));
 
   construirSelectorEstilo(mapa);
+  construirCruces(document.getElementById('cruces')!, {
+    alElegir: (cruce) => {
+      estado.cruce = cruce;
+      refrescarLista();
+    },
+  });
   construirConmutadores(mapa);
   construirFiltros(document.getElementById('filtros')!, estado.filtros, {
     alCambiar: (f) => {
@@ -568,7 +583,23 @@ function refrescarLista(): void {
     })
     .map((f) => f.properties);
 
-  pintarLista(visibles, manejadoresLista());
+  // El cruce se aplica **después** del encuadre y de los filtros: la pregunta
+  // es siempre sobre lo que se está viendo, no sobre toda España. Si no, el
+  // recuento diría «3 de 49» mientras en pantalla hay cinco incendios.
+  if (!estado.cruce) {
+    pintarResultado(visibles.length, null);
+    aplicarFiltros(mapa, estado.filtros, estado.diaElegido, null);
+    pintarLista(visibles, manejadoresLista());
+    return;
+  }
+
+  const resultado = aplicarCruce(visibles, estado.cruce);
+  pintarResultado(visibles.length, resultado);
+  aplicarFiltros(mapa, estado.filtros, estado.diaElegido, resultado.cumplen);
+  pintarLista(
+    visibles.filter((p) => resultado.cumplen.includes(p.id)),
+    manejadoresLista(),
+  );
 }
 
 /** Sin mapa la ficha sigue siendo útil: solo desaparece el centrado. */
