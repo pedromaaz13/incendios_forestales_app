@@ -452,6 +452,30 @@ def main() -> None:
         ahora=NOW,
     )
 
+    # Uso del suelo. En producción sale de una consulta a CORINE por incendio;
+    # aquí se asigna a mano porque la demo no toca la red. Las clases son reales
+    # y coherentes con dónde cae cada foco: monte en la sierra, cultivo en La
+    # Mancha, urbano en la refinería.
+    from incendios import suelo as suelo_mod
+
+    clases_demo = {
+        "Quema agrícola": "211",
+        "Refinería": "121",
+        "Cabañeros": "324",
+        "Cumbre Vieja": "323",
+    }
+    codigos = []
+    for municipio in incidents.get("municipio", pd.Series(dtype=object)).fillna(""):
+        codigo = next(
+            (c for clave, c in clases_demo.items() if clave.lower() in str(municipio).lower()),
+            "312",  # bosque de coníferas, lo más común en zona forestal española
+        )
+        codigos.append(codigo)
+    incidents["suelo_codigo"] = codigos
+    descritos = [suelo_mod._describir(c) for c in codigos]
+    incidents["suelo_clase"] = [d[0] for d in descritos]
+    incidents["suelo_tipo"] = [d[1] for d in descritos]
+
     validate_mod.validate_or_abort(incidents)
 
     web = build_mod.incidents_for_web(incidents)

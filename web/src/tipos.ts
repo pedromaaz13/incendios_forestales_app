@@ -45,6 +45,16 @@ export interface PropiedadesIncidente {
    * coordenada y ninguna otra fuente lo publica.
    */
   detalle_oficial?: string | null;
+  /**
+   * Uso del suelo donde cae el incendio, según CORINE Land Cover 2018.
+   *
+   * Separa el incendio forestal de la quema agrícola: un «incendio» sobre
+   * cultivo en julio es casi siempre rastrojo. **No se filtra por esto** —una
+   * quema que se descontrola es cómo empiezan muchos incendios forestales— se
+   * etiqueta y la decisión de mirarlo es de quien mira.
+   */
+  suelo_clase: string | null;
+  suelo_tipo: 'forestal' | 'agrícola' | 'urbano' | 'otro' | null;
   n_hotspots: number;
   /** Horas desde la última vez que un satélite vio calor ahí. */
   ultima_observacion_h: number | null;

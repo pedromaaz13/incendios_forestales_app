@@ -867,3 +867,16 @@ test('la ficha cita la dirección con las palabras de la fuente', async ({ page 
   // Y nunca la palabra que salía cuando el campo venía vacío.
   await expect(ficha).not.toContainText(/\bnan\b/);
 });
+
+test('la ficha dice sobre qué terreno cae el incendio', async ({ page }) => {
+  // Separa el incendio forestal de la quema agrícola: un «incendio» sobre
+  // cultivo en julio es casi siempre rastrojo. No se filtra por esto —una quema
+  // que se descontrola es cómo empiezan muchos incendios forestales— se etiqueta.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Terreno');
+  await expect(ficha).toContainText(/Bosque|Matorral|Cultivo|Pastizal|Superficie/);
+});

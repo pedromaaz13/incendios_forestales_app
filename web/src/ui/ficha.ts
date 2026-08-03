@@ -153,12 +153,22 @@ function bloqueContexto(p: PropiedadesIncidente): string {
         }`
       : '';
 
-  if (!viento && !aviso && !cortes && !ambiente && !poblacion) return '';
+  const terreno = p.suelo_clase
+    ? `<p class="ficha__dato"><span>Terreno</span><b>${texto(p.suelo_clase)}</b></p>${
+        p.suelo_tipo && p.suelo_tipo !== 'forestal'
+          ? `<p class="ficha__nota">Superficie ${texto(p.suelo_tipo)}: puede tratarse de
+               una quema agrícola o de una detección sobre suelo no forestal.</p>`
+          : ''
+      }`
+    : '';
+
+  if (!viento && !aviso && !cortes && !ambiente && !poblacion && !terreno) return '';
 
   return `
     <div class="ficha__seccion">
       <h3>Condiciones en la zona</h3>
       ${poblacion}
+      ${terreno}
       ${viento ? `<p class="ficha__dato"><span>Viento</span><b>${texto(viento)}</b></p>` : ''}
       ${ambiente}
       ${aviso}

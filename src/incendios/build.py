@@ -21,7 +21,7 @@ from datetime import UTC, datetime
 import geopandas as gpd
 import pandas as pd
 
-from . import contexto
+from . import contexto, suelo
 from .merge import INCIDENT_SCHEMA
 
 log = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ INCIDENT_WEB_FIELDS = [
     "radio_est_km",
     "ultima_observacion_h",
     *contexto.CAMPOS_CONTEXTO,
+    *suelo.CAMPOS_SUELO,
 ]
 
 
