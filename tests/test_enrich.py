@@ -5,14 +5,15 @@ sigue y deja los campos a nulo. Eso es correcto —el repo tiene que arrancar si
 descargas manuales de 30 MB— pero convierte el fallo en silencioso, así que lo
 que más se prueba aquí es que la degradación avise y no invente nombres.
 
-La capa municipal de estos tests es sintética. La validación real de RF-P-07
-(20 coordenadas conocidas con su municipio esperado) necesita los recintos del
-IGN y queda pendiente.
+La capa municipal de la mayoría de estos tests es sintética. La validación real
+de RF-P-07 —20 coordenadas conocidas contra su municipio esperado— vive al final
+del fichero y corre contra los recintos del IGN de verdad.
 """
 
 from __future__ import annotations
 
 import geopandas as gpd
+import pandas as pd
 import pytest
 from conftest import make_fires
 from shapely.geometry import Polygon
@@ -132,16 +133,114 @@ def test_enrich_does_not_duplicate_rows_on_overlapping_polygons(tmp_path):
     assert len(out) == 1
 
 
-@pytest.mark.skip(
-    reason=(
-        "RF-P-07 exige 20 coordenadas conocidas contra su municipio esperado. "
-        "Necesita los recintos municipales del IGN en config/municipios.geojson "
-        "(~30 MB, descarga manual). Pendiente de que la capa esté en el repo o "
-        "en el cacheado de CI."
-    )
+# --- RF-P-07 · la validación real, contra los recintos del IGN --------------
+#
+# Por qué existe: `enrich_admin` publica «Dónde: X» en cada incendio, y hasta
+# hoy nadie había comprobado que acierte. Es el patrón que ya nos mordió dos
+# veces —la precisión de MODIS y la cuota de FIRMS—: un número plausible que
+# nadie contrastó.
+#
+# Cómo se han elegido las coordenadas, que es lo único que hace que este test
+# valga algo. **No** salen de consultar `municipios.geojson`: son lugares
+# identificables y el municipio esperado se afirma con conocimiento
+# independiente de la capa. Sacarlas del propio GeoJSON las haría pasar por
+# construcción y no probaría nada, que es exactamente cómo la prueba de la
+# cuota de FIRMS pasó durante semanas contra un campo que la fuente no manda.
+#
+# Los nombres son las denominaciones oficiales del IGN, en lengua cooficial
+# donde corresponde: «València», «Vimbodí i Poblet», «Torla-Ordesa».
+
+VEINTE_COORDENADAS = [
+    # (lat, lon, municipio, provincia, referencia)
+    (40.4169, -3.7038, "Madrid", "Madrid", "Puerta del Sol"),
+    (41.4036, 2.1744, "Barcelona", "Barcelona", "Sagrada Família"),
+    (37.3861, -5.9926, "Sevilla", "Sevilla", "Giralda"),
+    # El IGN publica esta provincia con las dos lenguas en el mismo campo.
+    (39.4545, -0.3510, "València", "València/Valencia", "Ciutat de les Arts"),
+    (43.2687, -2.9340, "Bilbao", "Bizkaia", "Guggenheim"),
+    (37.8790, -4.7794, "Córdoba", "Córdoba", "Mezquita"),
+    (37.1761, -3.5881, "Granada", "Granada", "Alhambra"),
+    (42.8806, -8.5446, "Santiago de Compostela", "A Coruña", "Catedral"),
+    (40.9481, -4.1184, "Segovia", "Segovia", "Acueducto"),
+    (40.6565, -4.6818, "Ávila", "Ávila", "Murallas"),
+    # De aquí abajo, municipios pequeños: son los que de verdad prueban el
+    # geocoding. En una capital, un error de 2 km sigue cayendo dentro.
+    (41.3806, 1.0817, "Vimbodí i Poblet", "Tarragona", "Monasterio de Poblet"),
+    (28.2724, -16.6425, "La Orotava", "Santa Cruz de Tenerife", "Cumbre del Teide"),
+    (42.6417, -0.1108, "Torla-Ordesa", "Huesca", "Ordesa"),
+    (43.3078, -5.0556, "Cangas de Onís", "Asturias", "Covadonga"),
+    (36.7423, -5.1665, "Ronda", "Málaga", "Puente Nuevo"),
+    (40.0765, -2.1272, "Cuenca", "Cuenca", "Casas Colgadas"),
+    (43.3776, -4.1200, "Santillana del Mar", "Cantabria", "Altamira"),
+    (41.1969, -1.7861, "Nuévalos", "Zaragoza", "Monasterio de Piedra"),
+    (42.4589, -6.7700, "Carucedo", "León", "Las Médulas"),
+    (37.1319, -6.4869, "Almonte", "Huelva", "El Rocío"),
+]
+
+
+@pytest.mark.skipif(
+    not enrich_mod.MUNICIPIOS_PATH.exists(),
+    reason=f"sin los recintos del IGN en {enrich_mod.MUNICIPIOS_PATH}",
 )
-def test_twenty_known_coordinates_against_ign():
-    raise AssertionError("pendiente de config/municipios.geojson (IGN)")
+@pytest.mark.parametrize(
+    "lat,lon,municipio,provincia,referencia",
+    VEINTE_COORDENADAS,
+    ids=[c[4] for c in VEINTE_COORDENADAS],
+)
+def test_veinte_coordenadas_conocidas(lat, lon, municipio, provincia, referencia):
+    """RF-P-07. Si esto falla, llevamos meses publicando municipios erróneos.
+
+    Ante una discrepancia hay que averiguar quién se equivoca —la coordenada o
+    el geocoding— y **no** ajustar el valor esperado para que pase.
+    """
+    fila = enrich_mod.enrich_admin(
+        make_fires([{"fire_id": "f1", "latitude": lat, "longitude": lon}])
+    ).iloc[0]
+
+    assert fila["municipio"] == municipio, referencia
+    assert fila["provincia"] == provincia, referencia
+
+
+@pytest.mark.skipif(
+    not enrich_mod.MUNICIPIOS_PATH.exists(),
+    reason=f"sin los recintos del IGN en {enrich_mod.MUNICIPIOS_PATH}",
+)
+@pytest.mark.parametrize("lat,lon,donde", [
+    (35.7595, -5.8340, "Tánger, Marruecos"),
+    (38.7223, -9.1393, "Lisboa, Portugal"),
+    (43.6047, 1.4442, "Toulouse, Francia"),
+    (39.50, 1.50, "mar Mediterráneo"),
+])
+def test_fuera_de_espana_no_inventa_municipio(lat, lon, donde):
+    """Los bbox de FIRMS arrastran país vecino y mar abierto.
+
+    Un nulo es honesto; asignar el municipio más cercano sería afirmar que hay
+    un incendio en un pueblo que no lo tiene.
+    """
+    fila = enrich_mod.enrich_admin(
+        make_fires([{"fire_id": "f1", "latitude": lat, "longitude": lon}])
+    ).iloc[0]
+
+    assert fila["municipio"] is None or pd.isna(fila["municipio"]), donde
+
+
+@pytest.mark.skipif(
+    not enrich_mod.MUNICIPIOS_PATH.exists(),
+    reason=f"sin los recintos del IGN en {enrich_mod.MUNICIPIOS_PATH}",
+)
+@pytest.mark.parametrize("lat,lon,municipio", [
+    (35.8894, -5.3213, "Ceuta"),
+    (35.2937, -2.9383, "Melilla"),
+    (28.0916, -15.4197, "Las Palmas de Gran Canaria"),
+])
+def test_ciudades_autonomas_e_islas_son_espana(lat, lon, municipio):
+    """Ceuta y Melilla caen en pleno bbox del norte de África: el recorte a
+    España tiene que dejarlas dentro, no confundirlas con Marruecos."""
+    fila = enrich_mod.enrich_admin(
+        make_fires([{"fire_id": "f1", "latitude": lat, "longitude": lon}])
+    ).iloc[0]
+
+    assert fila["municipio"] == municipio
 
 
 # --- recorte a España · los bbox de FIRMS arrastran país vecino --------------
