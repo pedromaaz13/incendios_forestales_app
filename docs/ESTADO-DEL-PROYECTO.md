@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Foto del 30 de julio de 2026. Se actualiza al cerrar cada hito.
+Foto del 3 de agosto de 2026. Se actualiza al cerrar cada hito.
 
 Todo lo que dice este documento está comprobado contra el repositorio o contra
 la URL de producción en la fecha de arriba. Donde no hay comprobación posible,
@@ -34,15 +34,35 @@ Recuento real de la última ejecución:
 
 | Capa | Fichero | Registros |
 |---|---|---|
-| Incidentes | `incidents.geojson` | 37 |
-| Focos de calor | `hotspots.geojson` | 2.412 |
-| Perímetros estimados | `perimeters.geojson` | 126 |
+| Incidentes | `incidents.geojson` | 48 |
+| Focos de calor | `hotspots.geojson` | fiables + confianza baja etiquetada |
+| Perímetros estimados | `perimeters.geojson` | uno por incendio agrupado |
 | Viento, temperatura y humedad | `wind.geojson` | 230 nodos |
 | Calidad del aire | `aire.geojson` | 230 nodos |
-| Carreteras cortadas | `trafico.geojson` | 477 |
+| Carreteras cortadas | `trafico.geojson` | DGT, feed nacional |
 | Avisos oficiales de AEMET | `avisos.geojson` | según boletín |
-| Estado de fuentes | `sources.json` | 6 fuentes |
+| Estado de fuentes | `sources.json` | 8 fuentes |
 | Manifiesto | `manifest.json` | latencias y recuentos |
+
+**Dos fuentes oficiales activas**: `jcyl` (11 partes) y `112cv` (7). El resto
+sigue sin endpoint.
+
+Cada incidente publica, además de su posición e intensidad:
+
+| Campo | Qué dice | De dónde sale |
+|---|---|---|
+| `status` · `status_origen` | Estado, y **quién lo afirma**. Nulo sin parte oficial | Parte autonómico |
+| `igr_level` | Situación operativa 0-2 | Parte autonómico |
+| `resources_text` | Medios actuando | Parte autonómico |
+| `detalle_oficial` | Dónde está, con las palabras del operador | 112 CV |
+| `sensors` · `position_precision_m` | Qué satélite lo vio y con cuánta incertidumbre | FIRMS |
+| `nucleo_cercano` · `_km` · `_habitantes` | El pueblo habitado más cercano | IGN · núcleos |
+| `suelo_clase` · `suelo_tipo` | Sobre qué arde: monte, cultivo, urbano | CORINE 2018 |
+| `viento_*` · `temp_c` · `humedad_pct` | Condiciones observadas ahí | Open-Meteo, interpolado |
+| `aviso_*` | Aviso de AEMET vigente sobre la comarca | AEMET Meteoalerta |
+| `cortes_cerca` · `_por_incendio` | Accesos cortados a menos de 15 km | DGT |
+| `focos_recientes` · `crecimiento_ha_h` | Superficie nueva ya detectada en 6 h | FIRMS |
+| `ultima_observacion_h` | Cuánto hace que se vio calor ahí | FIRMS |
 
 ### Las dos latencias
 
@@ -75,10 +95,13 @@ frontend enseña los dos números y nunca uno solo.
 | `wind.py` | Completo | 230 nodos · viento, temperatura y humedad |
 | `aemet.py` | Completo | Avisos CAP 1.2 de Meteoalerta |
 | `contexto.py` | Completo | Viento, avisos, cortes, ritmo y distancia a población |
+| `suelo.py` | Completo | Uso del suelo por incendio · CORINE 2018 |
+| `sources/jcyl.py` | Completo | INFORCYL · coordenadas UTM, medios, nivel INFOCAL |
+| `sources/cv112.py` | Completo | 112 CV · filtra incidencias que no son incendio |
 | `aire.py` | Completo | CAMS vía Open-Meteo, bandas EAQI oficiales |
 | `trafico.py` | Completo | DGT DATEX II v3.7, feed nacional |
-| `health.py` | Completo | Estado y antigüedad por fuente |
-| `sources/` | Framework listo | **5 endpoints sin descubrir** |
+| `health.py` | Completo | Estado por **edad del dato**, no de la descarga |
+| `sources/` | 2 de 5 conectadas | **`infocam` sin descubrir**; `bombers` e `infoca` sin feed público conocido |
 
 ### Frontend (TypeScript + MapLibre, sin framework)
 
@@ -100,9 +123,10 @@ frontend enseña los dos números y nunca uno solo.
 ## 4 · Pruebas
 
 ```
-361 pruebas pasan · 3 saltadas · cobertura 93,20 %   (mínimo exigido: 85 %)
-62 pruebas E2E en Playwright
+481 pruebas pasan · 3 saltadas · cobertura 94,12 %   (mínimo exigido: 85 %)
+81 pruebas E2E en Playwright
 ```
+
 
 Los 3 `skip` no son deuda escondida. Cada uno cita el requisito que espera:
 dependen de la capa del IGN en un caso y de decisiones de un hito posterior en
@@ -148,16 +172,15 @@ FIRMS se pide con 3 días de margen: **579 de los 1.182 focos publicados tenían
 más de 24 h** y se pintaban con el control puesto en «1 día». No fallaba nada
 visible; el mapa enseñaba más focos de los que decía.
 
-### 5.3 · Cinco endpoints autonómicos sin descubrir
+### 5.3 · Un endpoint autonómico sin descubrir
 
-`112cv`, `infocam`, `jcyl` y dos más siguen en `disabled` con el motivo
-«endpoint sin descubrir». Los adaptadores tienen la URL vacía **a propósito**:
-una URL inventada devuelve 404 en silencio y eso se lee como «hoy no hay
-incendios», que es el fallo más peligroso de este sistema.
+`infocam` sigue con la URL vacía **a propósito**: una URL inventada devuelve 404
+en silencio y eso se lee como «hoy no hay incendios», que es el fallo más
+peligroso de este sistema.
 
-Se desbloquea abriendo el visor autonómico con las DevTools en la pestaña Red y
-copiando la petición que devuelve los incendios. El procedimiento está en
-`docs/COMO-CONECTAR-LAS-FUENTES.md`.
+`jcyl` se descubrió el 30-07 y `112cv` el 03-08. `bombers` e `infoca` se dan por
+**no disponibles**, no por pendientes: no hay indicios de que exista un feed
+público en tiempo real de esas dos comunidades.
 
 ### 5.4 · EFFIS caído
 
@@ -169,158 +192,132 @@ comprueba si ha vuelto.
 
 ## 6 · Plan y próximos pasos
 
-Actualizado el 31-07-2026. Ordenado por **orden de desarrollo**, no por deseo:
-cada bloque dice qué desbloquea, qué lo bloquea y cuánto cuesta.
+Actualizado el 03-08-2026. Los bloques 0, 1, 2 y 4 están **cerrados y en
+producción**; el 3 está bloqueado y el 5 sin empezar.
 
 ---
 
-### Bloque 0 · Honestidad del estado de las fuentes · **AHORA**
+### ~~Bloque 0 · Honestidad del estado de las fuentes~~ · HECHO
 
-Lo primero porque es un **fallo silencioso activo en producción**, del tipo exacto
-que este proyecto existe para no cometer.
+**Qué hace.** `health.py` responde ahora a **dos preguntas separadas**: ¿la
+descarga funcionó? → `error`. ¿el dato es fresco? → `stale`. Antes solo miraba la
+primera.
 
-**Qué pasa.** El 31-07-2026, FIRMS dejó de servir VIIRS: cero filas en 24 h para
-los tres satélites, mientras MODIS seguía dando 11 focos. VIIRS es más sensible
-que MODIS —375 m frente a 1 km— así que cero detecciones cuando MODIS ve once no
-es posible: su feed está caído en origen.
+**Qué conseguimos.** El 31-07-2026 FIRMS dejó de servir VIIRS —cero filas en 24 h
+para los tres satélites, mientras MODIS daba once focos— y el panel decía
+`ok · 883 registros · hace 15 s`, porque la descarga del archivo de tres días
+seguía funcionando. Ahora dice **«responde, pero sin datos nuevos desde hace
+20 h»**.
 
-El panel de fuentes, mientras tanto, decía:
+`max_data_age_seconds` se declara por fuente y es **opcional**: 12 h para las
+polares, 2 h para SEVIRI, y nada para las oficiales — que la Junta no publique un
+incendio nuevo en 20 h es una buena noticia, no una avería.
 
-```
-NASA FIRMS · VIIRS   ok · edad declarada 15 s · 883 registros
-```
+`stale_reason` dice **quién** falló, porque «rancio» a secas no distingue «no
+hemos podido descargar» de «la fuente dejó de publicar», y solo el primero se
+arregla desde aquí.
 
-**Por qué miente.** `health.py` guarda en `last_success_at` **cuándo conseguimos
-descargar**, no **cuándo se tomó el dato**. Como se pide una ventana de 3 días,
-FIRMS siempre devuelve filas de su archivo, la descarga siempre funciona, y la
-fuente parece sana indefinidamente. Una fuente que dejó de publicar aparece
-correcta porque seguimos bajando su archivo viejo.
+### ~~Bloque 1 · Las dos latencias, explicadas~~ · HECHO
 
-**Qué hacer.**
+**Qué hace.** Un `title` en cada número de la cabecera, el desglose por sensor en
+vez de solo el peor, y el intervalo declarado corregido a 30 min.
 
-1. Añadir `data_age_seconds` a `SourceHealth`: la antigüedad del **dato más
-   reciente**, no la de la descarga.
-2. `status()` pasa a `stale` cuando el dato supera la cadencia esperada del
-   sensor. Hoy VIIRS saldría en ámbar con «sin datos nuevos desde hace 20 h».
-3. Un aviso en el panel cuando una fuente crítica lleva más de una cadencia sin
-   publicar.
+**Qué conseguimos.** Con un solo número, «19 h 41 min» se leía como que todo
+estaba viejo, cuando MODIS tenía 5,6 h y lo parado era VIIRS. Ahora se ve
+**«VIIRS 19 h · MODIS 5,6 h»**: una alarma difusa pasa a ser un diagnóstico.
 
-Coste: media hora. **Convierte una avería invisible en visible.**
+El titular sigue siendo el peor caso, que es la regla del proyecto: enseñar el
+mejor sería tranquilizar sin fundamento.
 
----
+### ~~Bloque 2 · Endpoints autonómicos~~ · HECHO A MEDIAS
 
-### Bloque 1 · Las dos latencias, explicadas · **AHORA**
+**Castilla y León** (30-07) y **112 Comunitat Valenciana** (03-08) conectadas.
+`infocam` sigue sin descubrir.
 
-Los dos números de la cabecera son la razón de ser del proyecto y **no se
-entienden sin explicación**. Lo comprobó quien lo construyó, que dudó de qué
-significaba cada uno.
+**Qué conseguimos con JCyL.** Estado declarado, nivel operativo INFOCAL, medios
+actuando y descarte de falsas alarmas. Su trampa: los campos se llaman `latitud`
+y `longitud` pero son **metros UTM**; sin convertir, esa comunidad no habría
+aparecido nunca y el mapa habría seguido funcionando.
 
-- **«Datos satelitales · 19 h 41 min»** — cuándo lo vio un satélite. No depende
-  de nosotros.
-- **«Actualización · hace 24 min»** — cuándo corrió nuestro pipeline.
+**Qué conseguimos con el 112 CV.** La coordenada más precisa de todas (±100 m) y
+la **dirección con las palabras del operador**: «AP-7 Km364 >sur». Sitúa el fuego
+respecto a una carretera, que es como la gente localiza las cosas, y no se puede
+derivar de una coordenada.
 
-Mezclarlos es el error que este visor existe para no cometer: un pipeline que
-corrió hace 24 minutos puede estar enseñando lo que se vio ayer.
+Su trampa: **es un feed de incidencias, no de incendios**. De 58 registros, 15
+eran fuego; el resto accidentes, contaminación y salvamentos. Publicar un
+accidente de tráfico como incendio forestal sería de lo peor que puede pasar en
+este visor, así que hay ocho pruebas solo sobre su taxonomía.
 
-**Qué hacer.**
+### Bloque 3 · Sentinel-3 · **BLOQUEADO**
 
-1. Una nota corta o un `title` en cada número explicando cuál es cuál.
-2. Enseñar la antigüedad **por sensor**, no solo la peor. Hoy se lee «19 h 41» y
-   parece que todo está viejo, cuando MODIS tiene 5,6 h.
-3. Corregir «refresco cada 10 min» → **30 min**, que es lo que hace el cron. El
-   texto se quedó de cuando era otro intervalo.
+Sondeado el 03-08: el catálogo STAC de Copernicus responde 200 pero **no publica
+ninguna colección de producto de fuego**, solo de imagen. Corrige lo que se dijo
+antes: no es que dé 403, es que ahí no está. El producto FRP va por otra vía que
+sigue requiriendo registro.
 
-Coste: una hora. Es la diferencia entre un número alarmante y un número que
-informa.
+Sigue mereciendo la pena: hoy dependemos de dos sensores y cuando uno se cae —ya
+ha pasado— el visor se queda con 20 h de retraso.
 
----
+### ~~Bloque 4 · Uso del suelo~~ · HECHO
 
-### Bloque 2 · Un endpoint autonómico más · **BLOQUEADO EN TI**
+**Qué hace.** Consulta CORINE Land Cover 2018 por coordenada y etiqueta cada
+incendio con el terreno sobre el que cae.
 
-**CV112** primero. Es el que más aporta de los dos que quedan: coordenada de
-±100 m —la más precisa de todas las fuentes— y la descripción en texto libre del
-112, que sitúa el fuego respecto a una carretera, que es como la gente localiza
-las cosas.
+**Qué conseguimos.** De los 48 incidentes publicados el 03-08: **16 forestales,
+17 agrícolas, 14 urbanos**. Un tercio de lo que se publicaba como «incendio» cae
+sobre cultivo —casi siempre quema de rastrojo— y otro tercio sobre suelo urbano,
+que suele ser antorcha industrial o falsa detección.
 
-Después **FIDIAS** (Castilla-La Mancha).
+**Lo que deliberadamente NO hace: filtrar.** La tentación es quitar los agrícolas
+del mapa y sería un error — una quema de rastrojo que se descontrola es cómo
+empiezan muchos incendios forestales. Se etiqueta y quien mira decide. Hay un
+test que lo fija.
 
-**`bombers` e `infoca` se dan por no disponibles**, no por pendientes: el feed
-del visor de referencia no los lleva, teniendo incendios en Andalucía y Cataluña
-detectados solo por satélite, y el portal catalán publica agregados mensuales sin
-coordenadas.
-
-Procedimiento en `COMO-CONECTAR-LAS-FUENTES.md`. Con Castilla y León ya
-funcionando, cada endpoint nuevo es media hora de trabajo: el marco está hecho.
-
----
-
-### Bloque 3 · Sentinel-3 · **BLOQUEADO EN REGISTRO**
-
-La caída de VIIRS del 31-07 es el argumento: **hoy dependemos de dos sensores y
-uno se ha caído**, dejando el visor con 20 horas de retraso. Un tercero convierte
-una avería en una molestia.
-
-Sentinel-3 antes que SEVIRI, y esto corrige lo que se dijo al principio de la
-sesión:
-
-| | Pasadas | Detecta incendios de |
-|---|---|---|
-| Sentinel-3 | ~4/día más | ~30 ha, como MODIS |
-| SEVIRI | continuo | solo grandes (~900 ha/píxel) |
-
-Con una mediana de 28 ha por incendio, SEVIRI apenas vería ninguno de los que
-tenemos. Sondeado el 30-07: el catálogo STAC de Copernicus responde 200 pero
-`resto/api` da **403**, así que hace falta registro.
+Viable porque el servicio de la Agencia Europea de Medio Ambiente es **público y
+soporta consulta por punto**: descargar la capa europea serían decenas de
+gigabytes para mirar unas decenas de coordenadas.
 
 ---
 
-### Bloque 4 · Contexto que cambia la lectura
+## Lo que queda
 
-**CORINE Land Cover.** Separaría el ruido agrícola del incendio forestal: un
-«incendio» sobre cultivo en julio es probablemente quema de rastrojo. Explicaría
-buena parte de los incendios de un solo foco. Con el caché que ya monta los
-núcleos de población, el camino está trillado.
+### Bloqueado en ti
 
-**Espacios protegidos (Natura 2000).** «Arde dentro de un parque natural» es
-información que ninguna otra capa da.
+1. **`infocam` (Castilla-La Mancha).** Ni su portal de datos abiertos —la API
+   CKAN da 404— ni las rutas del sitio de la Junta exponen un visor localizable.
+   Necesita DevTools sobre su visor, como se hizo con INFORCYL.
+2. **Registro para el producto de fuego de Sentinel-3.**
 
----
+### Bloqueado en terceros
 
-### Bloque 5 · Alcance
+- **EFFIS**, caído desde el 27-07 con un fallo de su Oracle. Aportaría perímetros
+  cartografiados y el índice FWI oficial. `scripts/vigilar_effis.py` avisa.
+- **`bombers` e `infoca`**: la evidencia apunta a que no existe feed público en
+  tiempo real. No son tareas pendientes, son fuentes que no hay.
 
-**Páginas SEO por incendio** (RF-P-13). Tiene más sentido ahora que los incendios
-tienen nombre, estado y nivel: quien busca «incendio Villafranca del Bierzo» no
-llega hoy a nosotros.
+### Pendiente, no bloqueado
 
-**Alertas por correo** por zona.
-
-**Histórico largo.** Medido: 13 KB/día, ~5 MB al año. Git aguanta y Cloudflare R2
-no es urgente. `ingest.yml` está escrito para R2 y desactivado esperando bucket.
-
----
+1. **Natura 2000** — «arde dentro de un parque natural». Con el patrón de CORINE
+   ya montado es directo: mismo tipo de servicio, misma forma de consulta.
+2. **Páginas SEO por incendio** — ahora tienen nombre, estado y nivel, así que ya
+   tiene sentido. Quien busca «incendio Villafranca del Bierzo» no llega hoy.
+3. **Alertas por correo** por zona.
+4. **Histórico largo** — 13 KB/día, ~5 MB al año: git aguanta y R2 no es urgente.
 
 ### Descartado en firme
 
-No vuelven a la lista, y cada uno con su motivo:
-
-- **Índice de riesgo de AEMET** — responde 404 y además son mapas PNG. Un ráster
-  no se cruza con un incendio ni se consulta por municipio.
-- **Derivar el riesgo de tormenta de variables crudas** (CAPE, humedad) — sería
-  nuestra opinión sobre el tiempo, y este proyecto no tiene autoridad
-  meteorológica. Los avisos CAP ya dan la declaración oficial.
-- **Índice de propagación propio** — combinar temperatura, humedad y viento para
-  afirmar que un incendio se propagará es una predicción nuestra ante alguien que
-  mira si arde algo cerca de su casa. Cuando EFFIS vuelva, su `fwi_nuts5.fwi` es
-  el índice oficial por municipio.
-- **Consumir la API del visor de referencia** — nos haría depender de la
-  infraestructura de un tercero y sería aprovecharnos de su trabajo. Su feed
-  sirve como mapa del tesoro, no como fuente. Sección 12.3.
-- **Reintento a nivel de job para FIRMS** — 3 fallos de 13 por la red del runner
-  de GitHub. El sistema aborta limpio sin publicar y el cron siguiente recupera
-  en 30 min. Añadir complejidad para ganar media hora de frescura en una de cada
-  cuatro ejecuciones no compensa.
-- **Framework de componentes en el frontend** — es un mapa con paneles.
-- **Base de datos en el camino de lectura** — regla dura.
+- **Índice de riesgo de AEMET** — 404 y son mapas PNG. Un ráster no se cruza con
+  un incendio.
+- **Derivar el riesgo de tormenta de variables crudas** — sería nuestra opinión
+  sobre el tiempo; los avisos CAP ya dan la declaración oficial.
+- **Índice de propagación propio** — sería una predicción nuestra ante alguien
+  que mira si arde algo cerca de su casa.
+- **Consumir la API del visor de referencia** — dependencia de un tercero y
+  aprovecharse de su trabajo. Sección 12.3.
+- **Reintento a nivel de job para FIRMS** — falla ~3 de cada 13 ejecuciones por
+  la red del runner de GitHub. El sistema aborta limpio sin publicar y el cron
+  recupera en 30 min.
 
 ---
 
