@@ -205,9 +205,16 @@ def test_sources_report_marks_undiscovered_endpoints_as_disabled(firms_simulado,
     _ejecutar(salidas)
     salud = json.loads(salidas.sources_json.read_text(encoding="utf-8"))
 
+    # Las que el `autouse` deja en el registro son, por construcción, las que no
+    # tienen endpoint. Se comprueban todas en vez de nombrar dos: así el test no
+    # hay que editarlo cada vez que se descubre una.
+    from incendios.sources import adapters
+
     por_id = {s["id"]: s for s in salud["sources"]}
-    assert por_id["infocam"]["status"] == "disabled"
-    assert por_id["112cv"]["status"] == "disabled"
+    sin_url = [s.meta.source_id for s in adapters.REGISTRY]
+    assert sin_url, "el aislamiento debe dejar alguna fuente sin endpoint"
+    for source_id in sin_url:
+        assert por_id[source_id]["status"] == "disabled"
     assert por_id["firms_viirs"]["status"] == "ok"
     assert por_id["firms_viirs"]["records"] > 0
 

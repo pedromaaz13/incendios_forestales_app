@@ -1077,3 +1077,17 @@ body {
   line-height: 1.4;
   color: var(--muted);
 }
+
+/* Texto tal cual lo escribió el operador de la fuente. Va entrecomillado y con
+   barra lateral porque no es nuestro: son sus palabras, con sus abreviaturas y
+   su forma de referirse a los sitios, y presentarlo como si lo hubiéramos
+   redactado nosotros sería atribuirnos una precisión que no tenemos. */
+.ficha__nota--cita {
+  margin: 0.15rem 0 0.6rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--e2);
+  font-style: italic;
+}
+.ficha__dato--bloque {
+  margin-bottom: 0;
+}

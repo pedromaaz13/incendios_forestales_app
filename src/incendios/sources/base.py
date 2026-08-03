@@ -35,6 +35,11 @@ OFFICIAL_SCHEMA = [
     "level",          # nivel IGR / situación operativa, si la fuente lo da
     "resources",      # texto libre: medios actuando
     "raw_status",     # estado sin normalizar, para depurar cambios de formato
+    # Texto libre que escribe el operador de la fuente, cuando lo hay. El 112
+    # valenciano publica «AP-7 Km364 >sur»: sitúa el fuego respecto a una
+    # carretera, que es como la gente localiza las cosas, y ninguna otra fuente
+    # da nada parecido. Sin este campo se perdía al recortar al contrato.
+    "detalle",
 ]
 
 # Vocabulario normalizado. Cada adaptador mapea el suyo contra este.

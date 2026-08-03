@@ -344,9 +344,13 @@ def test_json_api_source_with_empty_extraction():
 def test_registry_sources_are_disabled_until_configured():
     """Regla dura de CLAUDE.md: los adaptadores tienen la URL vacía a propósito.
 
-    JCyL ya no está en la lista: su endpoint se descubrió el 30-07-2026 con
-    DevTools sobre INFORCYL y está verificado contra un fixture real. Las otras
-    cuatro siguen vacías, y lo estarán hasta que alguien repita el proceso.
+    Ya no están JCyL —descubierto el 30-07-2026 con DevTools sobre INFORCYL— ni
+    112cv —el 31-07 siguiendo la cadena de scripts de su visor—. Los dos están
+    verificados contra un fixture real.
+
+    Quedan `infocam`, y `bombers` e `infoca`, que se dan por no disponibles: el
+    feed del visor de referencia no los lleva y el portal catalán solo publica
+    agregados mensuales sin coordenadas.
 
     Una URL inventada devuelve 404 en silencio y eso se lee como 'hoy no hay
     incendios'. Este test se pondrá rojo el día que alguien pegue un endpoint
@@ -356,7 +360,7 @@ def test_registry_sources_are_disabled_until_configured():
     from incendios.sources.adapters import REGISTRY
 
     sin_configurar = [s.meta.source_id for s in REGISTRY if not s.meta.url]
-    assert sorted(sin_configurar) == ["112cv", "bombers", "infoca", "infocam"]
+    assert sorted(sin_configurar) == ["bombers", "infoca", "infocam"]
 
 
 def test_collect_all_skips_unconfigured_sources(monkeypatch):

@@ -93,7 +93,9 @@ OFICIALES = [
     # 112 CV: coordenada precisa
     dict(source_id="112cv", external_id="CV-2026-33917", latitude=39.902, longitude=-0.377,
          precision_m=100.0, status="activo", municipio="Eslida", provincia="Castelló",
-         level=1, resources="2 aéreos · 18 terrestres", horas=3),
+         level=1, resources="2 aéreos · 18 terrestres", horas=3,
+         # El 112 valenciano publica la dirección con las palabras del operador.
+         detalle="CV-223 Km4 Eslida > Aín, a mano derecha, a 300 m de la ctra"),
     # Huérfano oficial: sin cluster satelital cerca. Debe seguir apareciendo.
     dict(source_id="112cv", external_id="CV-2026-33920", latitude=38.760, longitude=-0.640,
          precision_m=100.0, status="activo", municipio="Alcoi", provincia="Alacant",
@@ -166,6 +168,7 @@ def construir_oficiales() -> pd.DataFrame:
         horas = fila.pop("horas")
         fila["reported_at"] = NOW - pd.Timedelta(hours=horas)
         fila["raw_status"] = fila["status"].capitalize()
+        fila.setdefault("detalle", None)
         filas.append(fila)
     return pd.DataFrame(filas)
 

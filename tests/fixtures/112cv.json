@@ -1,0 +1,74 @@
+[
+  {
+    "municipio": "Peníscola/Peñíscola",
+    "direccion": "AP-7 Km364 >sur",
+    "descripcionEs": "Incendio > Vegetación > Forestal",
+    "descripcionVa": "Incendi > Vegetació > Forestal",
+    "id": 39971604,
+    "coordenadas": [
+      {
+        "x": 0.3725,
+        "y": 40.41367
+      }
+    ]
+  },
+  {
+    "municipio": "Benidorm",
+    "direccion": "Partida Armanello camino butano / ahora: detrás de la discoteca tropical / antes: campo de personas de étnia gitana / pos AML",
+    "descripcionEs": "Incendio > Vegetación > Rural/Montañosa",
+    "descripcionVa": "Incendi > Vegetació > Rural/Muntanyosa",
+    "id": 40054093,
+    "coordenadas": [
+      {
+        "x": -0.11463,
+        "y": 38.54663
+      }
+    ]
+  },
+  {
+    "municipio": "Puçol",
+    "direccion": "V-21 > teruel  / en lado izq carretera a pocos metros altura casino monte picayo / antes del bypass",
+    "descripcionEs": "Incendio > Vegetación > Rural/Montañosa Humo",
+    "descripcionVa": "Incendi > Vegetació > Rural/Muntanyosa Fum",
+    "id": 40229899,
+    "coordenadas": [
+      {
+        "x": -0.29474,
+        "y": 39.61772
+      }
+    ]
+  },
+  {
+    "municipio": "Valencia",
+    "direccion": "Calle Ifach 59 solar frente nº 59",
+    "descripcionEs": "Incendio > Vegetación > Urbana",
+    "descripcionVa": "Incendi > Vegetació > Urbana",
+    "id": 40229549,
+    "coordenadas": [
+      {
+        "x": -0.33367,
+        "y": 39.44602
+      }
+    ]
+  },
+  {
+    "municipio": "La Pobla de Farnals",
+    "descripcionEs": "Medioambiente > Contaminación > Mar",
+    "descripcionVa": "Medi ambient > Contaminació > Mar",
+    "id": 40137158,
+    "coordenadas": [
+      {
+        "x": -0.28032,
+        "y": 39.5655
+      }
+    ]
+  },
+  {
+    "municipio": "Peníscola/Peñíscola",
+    "direccion": "AP-7 Km364 >sur",
+    "descripcionEs": "Incendio > Vegetación > Forestal",
+    "descripcionVa": "Incendi > Vegetació > Forestal",
+    "id": 99999999,
+    "coordenadas": []
+  }
+]

@@ -36,6 +36,15 @@ export interface PropiedadesIncidente {
   resources_ground: number | null;
   resources_people: number | null;
   resources_text?: string | null;
+  /**
+   * Cómo describe la fuente dónde está el fuego, con sus palabras.
+   *
+   * «AP-7 Km364 >sur», «CV-794 Km7 Bocairent > Alcoi, a mano derecha». Lo
+   * escribe el operador del 112 y sitúa el incendio respecto a una carretera,
+   * que es como la gente localiza las cosas. No se puede derivar de una
+   * coordenada y ninguna otra fuente lo publica.
+   */
+  detalle_oficial?: string | null;
   n_hotspots: number;
   /** Horas desde la última vez que un satélite vio calor ahí. */
   ultima_observacion_h: number | null;
