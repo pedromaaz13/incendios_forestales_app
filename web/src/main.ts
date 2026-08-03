@@ -47,7 +47,7 @@ import {
   anadirCapaViento,
   anadirCapasIncidentes,
   anadirCapasPerimetros,
-} from './map/capas';
+  pintarActivos,} from './map/capas';
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
 import { agruparPorDia, pintarEvolutivo, type DiaEvolutivo } from './ui/evolutivo';
@@ -57,6 +57,15 @@ import {
   construirCruces,
   pintarResultado,
 } from './ui/cruces';
+import { construirBuscador } from './ui/buscador';
+import {
+  type Activo,
+  CERCA_KM,
+  type Exposicion,
+  calcularExposicion,
+  construirActivos,
+  pintarExposicion,
+} from './ui/activos';
 import { abrirFicha, cerrarFicha, registrarFocos } from './ui/ficha';
 import {
   FILTROS_INICIALES,
@@ -96,6 +105,8 @@ interface Estado {
   diaElegido: string | null;
   /** Cruce activo, o `null` si se ve todo. */
   cruce: Cruce | null;
+  /** Puntos que ha subido el usuario. Nunca salen del navegador. */
+  activos: Activo[] | null;
 }
 
 const estado: Estado = {
@@ -112,6 +123,7 @@ const estado: Estado = {
   dias: [],
   diaElegido: null,
   cruce: null,
+  activos: null,
 };
 
 /**
@@ -226,6 +238,28 @@ async function arrancar(): Promise<void> {
       refrescarLista();
     },
   });
+  construirBuscador(document.getElementById('buscador')!, {
+    alElegir: (nucleo) => {
+      mapa.flyTo({
+        center: [nucleo.lon, nucleo.lat],
+        zoom: Math.max(mapa.getZoom(), 11),
+        duration: prefiereMenosMovimiento() ? 0 : 900,
+      });
+    },
+  });
+  construirActivos(document.getElementById('activos')!, {
+    alCambiar: (activos) => {
+      estado.activos = activos;
+      refrescarActivos();
+    },
+    alElegir: (activo) => {
+      mapa.flyTo({
+        center: [activo.lon, activo.lat],
+        zoom: Math.max(mapa.getZoom(), 11),
+        duration: prefiereMenosMovimiento() ? 0 : 900,
+      });
+    },
+  });
   construirConmutadores(mapa);
   construirFiltros(document.getElementById('filtros')!, estado.filtros, {
     alCambiar: (f) => {
@@ -326,6 +360,7 @@ async function refrescar(): Promise<void> {
   const fuente = mapa.getSource(FUENTE_INCIDENTES) as maplibregl.GeoJSONSource | undefined;
   fuente?.setData(estado.incidentes as GeoJSON.FeatureCollection);
   refrescarLista();
+  refrescarActivos();
 }
 
 // --- capas ------------------------------------------------------------------
@@ -565,6 +600,46 @@ function resaltar(id: string | null): void {
     ['!', ['has', 'point_count']],
     ['==', ['get', 'id'], id ?? ''],
   ]);
+}
+
+/** Traduce la exposición al nivel de color que entiende la capa del mapa. */
+function nivelDe(e: Exposicion): string {
+  if (e.distanciaKm === null || e.distanciaKm > CERCA_KM) return 'lejos';
+  if (e.aSotavento === null) return 'duda';
+  return e.aSotavento ? 'alta' : 'media';
+}
+
+function pintarActivosEnMapa(exposiciones: Exposicion[]): void {
+  if (!estado.mapa) return;
+  pintarActivos(
+    estado.mapa,
+    exposiciones.map((e) => ({
+      nombre: e.activo.nombre,
+      lon: e.activo.lon,
+      lat: e.activo.lat,
+      nivel: nivelDe(e),
+    })),
+  );
+}
+
+/**
+ * Recalcula la exposición de los activos del usuario.
+ *
+ * Se llama también al refrescar los datos: si aparece un incendio nuevo cerca
+ * de una nave, el panel tiene que enterarse sin recargar la página.
+ */
+function refrescarActivos(): void {
+  if (!estado.activos) {
+    pintarExposicion([]);
+    pintarActivosEnMapa([]);
+    return;
+  }
+  const exposiciones = calcularExposicion(
+    estado.activos,
+    estado.incidentes?.features ?? [],
+  );
+  pintarExposicion(exposiciones);
+  pintarActivosEnMapa(exposiciones);
 }
 
 function refrescarLista(): void {

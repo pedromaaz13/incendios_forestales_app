@@ -51,6 +51,13 @@
 
     <main class="disposicion">
       <aside class="panel panel--izq" aria-label="Estado de fuentes, resumen y capas">
+        <!-- Lo primero del panel a propósito: quien llega asustado no viene a
+             mirar el estado de las fuentes, viene a escribir el nombre de su
+             pueblo. -->
+        <section class="bloque">
+          <div class="buscador" id="buscador"></div>
+        </section>
+
         <section class="bloque">
           <h2 class="bloque__titulo">Estado de fuentes</h2>
           <ul class="fuentes" id="lista-fuentes"></ul>
@@ -75,6 +82,13 @@
         <section class="bloque">
           <h2 class="bloque__titulo">Cruces entre capas</h2>
           <div class="cruces" id="cruces"></div>
+        </section>
+
+        <!-- Tras los cruces: es la misma idea —preguntar a los datos— pero
+             sobre puntos que trae el usuario en vez de sobre el conjunto. -->
+        <section class="bloque">
+          <h2 class="bloque__titulo">Mis activos</h2>
+          <div class="activos" id="activos"></div>
         </section>
 
         <section class="bloque">
