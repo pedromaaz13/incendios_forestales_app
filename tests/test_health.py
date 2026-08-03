@@ -232,15 +232,18 @@ def test_unconfigured_registry_sources_are_disabled_not_broken():
     `disabled` dice «esto todavía no está conectado». Pintar de rojo lo segundo
     haría que nadie mirase el rojo del primero.
 
-    JCyL ya tiene endpoint desde el 30-07-2026, así que este test mira solo las
-    que siguen sin él.
+    JCyL (30-07) y 112cv (31-07) ya tienen endpoint, así que este test mira solo
+    las que siguen sin él y se calcula la lista en vez de fijarla: cada endpoint
+    nuevo la cambia, y un test que hay que editar en cada avance acaba
+    editándose sin pensar.
     """
     from incendios.sources.adapters import REGISTRY
 
     sin_url = [s for s in REGISTRY if not s.meta.url]
     estados = health.from_official_sources(sin_url, results={}, now=NOW)
 
-    assert {s.id for s in estados} == {"infocam", "112cv", "bombers", "infoca"}
+    assert {s.id for s in estados} == {s.meta.source_id for s in sin_url}
+    assert estados, "el test pierde sentido si todas las fuentes están configuradas"
     assert all(s.status(NOW) == STATUS_DISABLED for s in estados)
     assert all(s.records == 0 for s in estados)
 

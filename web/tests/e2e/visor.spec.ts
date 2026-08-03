@@ -852,3 +852,18 @@ test('la antigüedad se desglosa por sensor, no solo la peor', async ({ page }) 
   expect(pie.split('·').length).toBeGreaterThan(1);
   expect(pie).toMatch(/\d+\s*(min|h)/);
 });
+
+test('la ficha cita la dirección con las palabras de la fuente', async ({ page }) => {
+  // «CV-223 Km4 Eslida > Aín, a mano derecha» lo escribe el operador del 112 y
+  // sitúa el fuego respecto a una carretera, que es como la gente localiza las
+  // cosas. Va entrecomillado porque no son nuestras palabras.
+  await abrir(page, '/?lat=39.90&lon=-0.38&zoom=11');
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Dónde');
+  await expect(ficha.locator('.ficha__nota--cita')).toBeVisible();
+  // Y nunca la palabra que salía cuando el campo venía vacío.
+  await expect(ficha).not.toContainText(/\bnan\b/);
+});

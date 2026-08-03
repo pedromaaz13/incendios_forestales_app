@@ -15,7 +15,7 @@ import logging
 import httpx
 import pandas as pd
 
-from . import jcyl
+from . import cv112, jcyl
 from .base import (
     STATUS_ACTIVE,
     STATUS_CONTROLLED,
@@ -215,12 +215,22 @@ CV112 = JsonApiSource(
         source_id="112cv",
         name="112 Comunitat Valenciana",
         region="Comunitat Valenciana",
-        url="",  # TODO
-        precision_m=100,  # coordenadas del incidente
+        # Descubierto el 31-07-2026 siguiendo la cadena de scripts del visor de
+        # incendios: `incendios.js` monta una vista que declara sus rutas.
+        # Público: responde 200 con User-Agent identificable, sin sesión.
+        url="https://wpr.112cv.gva.es/external/api/storage/descargar/json/incidentes",
+        # Coordenada del incidente, la más precisa de todas las fuentes.
+        # Provisional hasta medirla con 5 incendios de paraje conocido.
+        precision_m=100,
         ttl_seconds=300,
         attribution="Generalitat Valenciana · 112",
+        notes=(
+            "**Feed de incidencias, no de incendios**: de 58 registros, 15 eran "
+            "incendios. Filtrar mal publicaría un accidente de tráfico como "
+            "incendio forestal. No trae fecha ni hora en ningún campo."
+        ),
     ),
-    extract=lambda raw: [],  # TODO
+    extract=cv112.extraer,
 )
 
 BOMBERS = JsonApiSource(

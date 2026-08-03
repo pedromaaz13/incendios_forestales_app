@@ -148,6 +148,8 @@ def make_official(
         "provincia": "Provincia",
         "level": None,
         "resources": None,
+        # Texto libre del operador. Hoy solo lo publica el 112 valenciano.
+        "detalle": None,
         "raw_status": "Activo",
     }
     return pd.DataFrame([{**base, **r} for r in rows]).reset_index(drop=True)

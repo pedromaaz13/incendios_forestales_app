@@ -625,3 +625,38 @@ def test_sin_parte_oficial_el_nivel_y_los_medios_quedan_nulos(now):
 
     assert pd.isna(fila["igr_level"])
     assert not fila["resources_text"]
+
+
+def test_un_campo_ausente_no_publica_la_palabra_nan(now):
+    """`str(NaN)` es `"nan"`, que es una cadena no vacía y se colaba tal cual.
+
+    Salió en la demo como «Dónde: nan» en cinco incendios de seis. Es peor que
+    no poner nada: parece un dato y no lo es.
+    """
+    official = make_official([
+        {"source_id": "jcyl", "latitude": 39.5, "longitude": -0.5,
+         "precision_m": 500.0, "status": "activo", "detalle": None, "resources": None},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["detalle_oficial"] in (None, ""), f"salió {fila['detalle_oficial']!r}"
+    assert str(fila["resources_text"]) != "nan"
+
+
+def test_el_detalle_del_parte_llega_al_incidente(now):
+    """La dirección con las palabras del operador es lo único que aporta el 112
+    valenciano y no se puede derivar de una coordenada."""
+    official = make_official([
+        {"source_id": "112cv", "latitude": 39.5, "longitude": -0.5,
+         "precision_m": 100.0, "status": "activo",
+         "detalle": "CV-223 Km4, a mano derecha"},
+    ])
+    fires = make_fires([{"fire_id": "f1", "latitude": 39.5, "longitude": -0.5}])
+
+    emparejados, clusters = merge.match(official, fires)
+    fila = merge.build_incidents(emparejados, clusters).iloc[0]
+
+    assert fila["detalle_oficial"] == "CV-223 Km4, a mano derecha"

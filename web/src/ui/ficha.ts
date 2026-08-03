@@ -190,6 +190,12 @@ function bloqueOficial(p: PropiedadesIncidente): string {
   return `
     <div class="ficha__seccion">
       <h3>Parte oficial</h3>
+      ${
+        p.detalle_oficial
+          ? `<p class="ficha__dato ficha__dato--bloque"><span>Dónde</span></p>
+             <p class="ficha__nota ficha__nota--cita">${texto(p.detalle_oficial)}</p>`
+          : ''
+      }
       ${p.igr_level !== null ? dato('Nivel IGR', String(p.igr_level)) : ''}
       ${medios}
       ${p.started_at ? dato('Inicio declarado', fechaHora(p.started_at)) : ''}

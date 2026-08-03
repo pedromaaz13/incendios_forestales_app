@@ -95,6 +95,9 @@ INCIDENT_SCHEMA = [
     "resources_ground",
     "resources_people",
     "resources_text",
+    # Cómo describe la fuente dónde está el fuego, con sus palabras. Ninguna
+    # otra capa da esto y no se puede derivar de una coordenada.
+    "detalle_oficial",
     "n_hotspots",
     # Qué sensores vieron este incendio. Se publica porque cambia cómo hay que
     # leerlo: un incendio visto solo por MODIS tiene 1 km de resolución frente a
@@ -226,6 +229,10 @@ def match(
             # Los medios se concatenan si hay varias fuentes: dos comunidades
             # que confirman el mismo frente despliegan cada una los suyos.
             official_resources=("resources", _juntar_medios),
+            # La dirección en texto libre del operador. Solo el 112 valenciano
+            # la publica hoy —«AP-7 Km364 >sur»— y es lo que sitúa el fuego
+            # respecto a una carretera, que es como la gente localiza las cosas.
+            official_detalle=("detalle", _primer_texto),
         )
         fires = fires.set_index("fire_id")
         for columna in by_fire.columns:
@@ -250,9 +257,35 @@ _STATUS_RANK = {
 }
 
 
+def _primer_texto(values: pd.Series) -> str | None:
+    """El primer valor no vacío. Para campos donde concatenar no aporta.
+
+    `pd.isna` antes que `str()`: un NaN de pandas se convierte en la cadena
+    `"nan"`, que es no vacía y se colaba tal cual en la ficha. Salió en la demo
+    como «Dónde: nan», que es peor que no poner nada.
+    """
+    for v in values:
+        if v is None or (not isinstance(v, str) and pd.isna(v)):
+            continue
+        texto = str(v).strip()
+        if texto:
+            return texto
+    return None
+
+
 def _juntar_medios(values: pd.Series) -> str:
-    """Une los medios de varias fuentes sin repetir ni dejar huecos."""
-    textos = [str(v).strip() for v in values if v is not None and str(v).strip()]
+    """Une los medios de varias fuentes sin repetir ni dejar huecos.
+
+    Mismo cuidado con NaN que `_primer_texto`: sin él, un incendio sin medios
+    declarados publicaba la palabra «nan» donde debería ir el despliegue.
+    """
+    textos = []
+    for v in values:
+        if v is None or (not isinstance(v, str) and pd.isna(v)):
+            continue
+        texto = str(v).strip()
+        if texto:
+            textos.append(texto)
     return " · ".join(dict.fromkeys(textos))
 
 
@@ -346,6 +379,7 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
         orphans["official_level"] = orphans["level"]
         orphans["official_resources"] = orphans["resources"]
         orphans["official_provincia"] = orphans["provincia"]
+        orphans["official_detalle"] = orphans["detalle"]
 
     parts = [fires]
     if not orphans.empty:
@@ -365,6 +399,7 @@ def build_incidents(official: pd.DataFrame, fires: gpd.GeoDataFrame) -> gpd.GeoD
     # esquema, el frontend los pintaba, y nadie los rellenaba nunca.
     out["igr_level"] = pd.to_numeric(out.get("official_level"), errors="coerce")
     out["resources_text"] = out.get("official_resources")
+    out["detalle_oficial"] = out.get("official_detalle")
 
     # La provincia del parte oficial gana a la del geocoding inverso: la declara
     # quien gestiona el incendio, y además el geocoding no la tiene para los
