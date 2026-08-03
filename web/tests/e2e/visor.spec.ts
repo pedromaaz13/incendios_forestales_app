@@ -935,4 +935,35 @@ test('la leyenda del terreno explica los colores y su limitación', async ({ pag
   // ya había ardido. Sin explicarlo, el usuario lo lee como un bug.
   await expect(leyenda).toContainText('ya quemada');
   await expect(leyenda).toContainText('ya había ardido');
+  // Y por qué se emborrona al acercarse, que si no parece que falle.
+  await expect(leyenda).toContainText('25 ha');
+});
+
+test('el terreno no desaparece al acercar el mapa', async ({ page }) => {
+  // CORINE deja de servir datos a partir de zoom 12: devuelve una tesela
+  // transparente de 886 bytes. Con `maxzoom` mal puesto, MapLibre pedía esas y
+  // la capa se esfumaba justo cuando el usuario se acerca a mirar el detalle.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('[data-capa="suelo"]').click();
+  await page.waitForTimeout(2000);
+
+  const maxzoom = await page.evaluate(() => {
+    const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    const fuente = mapa?.getStyle().sources['suelo'] as { maxzoom?: number };
+    return fuente?.maxzoom;
+  });
+
+  // Por encima de 11 se piden teselas que el servicio devuelve vacías.
+  expect(maxzoom).toBeLessThanOrEqual(11);
+
+  // Y la capa sigue montada tras acercarse a escala de calle.
+  await page.evaluate(() => {
+    (window as never as { __mapa?: maplibregl.Map }).__mapa?.setZoom(16);
+  });
+  await page.waitForTimeout(1200);
+
+  const sigue = await page.evaluate(
+    () => !!(window as never as { __mapa?: maplibregl.Map }).__mapa?.getLayer('suelo-raster'),
+  );
+  expect(sigue).toBe(true);
 });

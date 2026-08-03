@@ -839,6 +839,8 @@ function pintarLeyenda(): void {
              estado actual del terreno. Sirve para saber si un incendio está en
              monte o en cultivo, no para medir superficies. Las manchas negras
              son terreno que <b>ya había ardido</b> cuando se levantó el mapa.
+             Al acercarse mucho <b>se ve borroso</b>: CORINE cartografía a partir
+             de 25 ha y no tiene más detalle que ese.
            </p>`
         : ''
     }
