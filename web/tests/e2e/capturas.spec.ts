@@ -208,3 +208,12 @@ test('captura · 20-terreno.png', async ({ page }) => {
   await page.waitForTimeout(6000);
   await page.screenshot({ path: ruta('20-terreno.png') });
 });
+
+test('captura · 21-cruces.png', async ({ page }) => {
+  // El panel con un cruce activo: mapa y lista filtrados a la vez, y el
+  // recuento diciendo de cuántos sale.
+  await abrir(page);
+  await page.locator('[data-cruce="confirmado"]').click();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: ruta('21-cruces.png') });
+});

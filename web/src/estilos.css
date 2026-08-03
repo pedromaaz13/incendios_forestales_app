@@ -1091,3 +1091,73 @@ body {
 .ficha__dato--bloque {
   margin-bottom: 0;
 }
+
+/* --- cruces entre capas ------------------------------------------------ */
+
+.cruces__intro {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.cruces__lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* Cada cruce enseña la pregunta y, debajo, la combinación que la responde. Sin
+   el criterio, el botón sería magia: con él, además de filtrar, enseña qué
+   campos existen y se pueden cruzar. */
+.cruce {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.cruce:hover {
+  border-color: var(--acento);
+}
+.cruce[aria-pressed="true"] {
+  border-color: var(--acento);
+  background: color-mix(in srgb, var(--acento) 14%, transparent);
+}
+.cruce__pregunta {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.cruce__criterio {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cruces__resultado {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+/* Los que no se pueden evaluar van atenuados y aparte: «no cumple» y «no se
+   sabe» son cosas distintas, y juntarlas convertiría un hueco en afirmación. */
+.cruces__huecos {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cruces__aviso {
+  margin: 10px 0 0;
+  padding: 7px 9px;
+  border-left: 2px solid var(--e2);
+  border-radius: 0 6px 6px 0;
+  background: var(--fondo-suave, rgb(0 0 0 / 0.04));
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}

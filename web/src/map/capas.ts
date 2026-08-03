@@ -644,10 +644,16 @@ export function anadirCapaSuelo(mapa: MapaGL, debajoDe?: string): void {
       type: 'raster',
       tiles: [SUELO_URL],
       tileSize: 256,
-      // Por encima de zoom 13 el servicio devuelve teselas casi vacías: CORINE
-      // tiene una unidad mínima de 25 ha y no da más detalle. Se deja de pedir
-      // en vez de pintar recuadros en blanco.
-      maxzoom: 13,
+      // **11, no más.** Medido contra el servicio el 03-08-2026: a zoom 12 y
+      // por encima devuelve una tesela transparente de 886 bytes. CORINE tiene
+      // una unidad mínima de 25 ha y sencillamente no cartografía más fino.
+      //
+      // El valor anterior era 13, y el efecto era que al acercarse **la capa
+      // desaparecía**: MapLibre pedía teselas de z12 y z13, recibía las vacías y
+      // las pintaba. Con 11, deja de pedir y **estira las últimas buenas**, que
+      // salen borrosas pero siguen ahí — que es lo honesto, porque el dato no
+      // tiene más resolución.
+      maxzoom: 11,
       attribution:
         '<a href="https://land.copernicus.eu/pan-european/corine-land-cover">' +
         'CORINE Land Cover 2018 · EEA</a>',
