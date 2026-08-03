@@ -29,9 +29,11 @@ ningún fallo de este proyecto dio un error — devolvieron un número plausible
 equivocado, que es la forma que tiene de fallar un sistema de datos. La columna
 que más importa de cada entrada no es la solución, es *por qué no saltó nadie*.
 
-**COMO-CONECTAR-LAS-FUENTES.md** · la tarea pendiente que no puede hacer un
-agente. Los cinco adaptadores autonómicos tienen la URL vacía **a propósito**, y
-sacarlas exige abrir el visor de cada comunidad con las DevTools. Lleva un anexo
+**COMO-CONECTAR-LAS-FUENTES.md** · la tarea que no puede hacer un agente. De las
+cinco fuentes autonómicas hay **dos conectadas** —Castilla y León y el 112
+valenciano— y las demás siguen con la URL vacía **a propósito**: una URL
+inventada devuelve 404 en silencio y eso se lee como «hoy no hay incendios».
+Sacarlas exige abrir el visor de cada comunidad con las DevTools. Lleva un anexo
 técnico para cuando ya tengas una URL y toque escribir el adaptador, y un
 registro de lo ya comprobado — incluido lo que **no** sirve, que ahorra repetir
 trabajo descartado.
