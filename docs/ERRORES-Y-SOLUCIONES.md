@@ -225,6 +225,31 @@ no se ha visto fallar no prueba nada.
 
 ## B · Ingesta y parseo de fuentes
 
+### B6 · Un campo vacío se publicaba como la palabra «nan»
+
+`str(NaN)` es `"nan"`, que es una cadena **no vacía**. Los agregadores que
+juntaban texto de varias fuentes la dejaban pasar, y la ficha publicaba
+**«Dónde: nan»** en cinco de seis incendios de la demo.
+
+Parece un dato y no lo es, que es la peor combinación.
+
+**Solución.** `pd.isna` antes que `str()` en `_primer_texto` y `_juntar_medios`,
+con test de regresión. La comprobación tiene que ir **antes** de convertir, no
+después: una vez es cadena, ya no hay forma de distinguirla de un texto real.
+
+### B7 · El 112 valenciano publica incidencias, no incendios
+
+Al conectar `112cv` el primer impulso fue publicar su feed entero. De 58
+registros, **15 eran incendios**: el resto accidentes de tráfico, contaminación
+marina, salvamentos y cortes de suministro.
+
+Publicar un accidente de tráfico como incendio forestal en un visor que la gente
+mira asustada es de lo peor que puede pasar aquí.
+
+**Solución.** Filtro sobre su taxonomía jerárquica —«Incendio > Vegetación >
+Forestal»— con ocho pruebas parametrizadas. Se excluye además «Vegetación >
+Urbana»: un solar ardiendo no es lo que este visor cubre.
+
 ### B1 · Un `KeyError` opaco cuando FIRMS cambiaba de columnas
 
 Si FIRMS devolvía un CSV sin la columna esperada, el fallo era un `KeyError`
@@ -479,6 +504,35 @@ afirman dónde caen.
 ---
 
 ## E · Pruebas y CI
+
+### E5 · Tests que había que editar en cada avance
+
+Varios tests fijaban la lista literal de fuentes sin endpoint:
+
+```python
+assert sorted(sin_configurar) == ["112cv", "bombers", "infoca", "infocam"]
+```
+
+Cada endpoint descubierto obligaba a tocar tres ficheros de test. Un test que hay
+que editar en cada avance acaba editándose sin pensar, y entonces deja de
+proteger.
+
+**Solución.** Se calculan desde el registro en vez de fijarse. El test comprueba
+la **propiedad** —las que no tienen URL salen `disabled`— en lugar de una lista
+que caduca.
+
+### E6 · Un servidor de `vite preview` colgado hacía fallar 20 tests
+
+Una tanda de E2E falló con errores que no tenían que ver con el cambio. La causa:
+un `vite preview` de una ejecución anterior seguía vivo sirviendo un `dist`
+viejo, y `reuseExistingServer: true` lo reutilizaba en vez de arrancar uno nuevo.
+
+No es un fallo del código, pero cuesta un rato entenderlo porque los síntomas
+apuntan a cualquier otro sitio.
+
+**Cómo se reconoce:** muchos tests fallan a la vez en pocos milisegundos, y los
+mismos pasan aislados. **Solución:** `pkill -f "vite preview"` antes de
+reconstruir.
 
 ### E1 · El fixture del E2E caducaba de un día para otro
 

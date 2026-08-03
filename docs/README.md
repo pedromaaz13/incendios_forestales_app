@@ -29,12 +29,41 @@ ningún fallo de este proyecto dio un error — devolvieron un número plausible
 equivocado, que es la forma que tiene de fallar un sistema de datos. La columna
 que más importa de cada entrada no es la solución, es *por qué no saltó nadie*.
 
-**COMO-CONECTAR-LAS-FUENTES.md** · la tarea pendiente que no puede hacer un
-agente. Los cinco adaptadores autonómicos tienen la URL vacía **a propósito**, y
-sacarlas exige abrir el visor de cada comunidad con las DevTools. Lleva un anexo
+**COMO-CONECTAR-LAS-FUENTES.md** · la tarea que no puede hacer un agente. De las
+cinco fuentes autonómicas hay **dos conectadas** —Castilla y León y el 112
+valenciano— y las demás siguen con la URL vacía **a propósito**: una URL
+inventada devuelve 404 en silencio y eso se lee como «hoy no hay incendios».
+Sacarlas exige abrir el visor de cada comunidad con las DevTools. Lleva un anexo
 técnico para cuando ya tengas una URL y toque escribir el adaptador, y un
 registro de lo ya comprobado — incluido lo que **no** sirve, que ahorra repetir
 trabajo descartado.
+
+## Cómo está montado el pipeline
+
+Por si hace falta situar un módulo sin leerlos todos. El orden es el de
+ejecución:
+
+| Módulo | Qué hace |
+|---|---|
+| `firms.py` | Baja los focos de calor de NASA FIRMS (VIIRS ×3 + MODIS) |
+| `clean.py` | Confianza, máscara industrial y dedup entre pasadas |
+| `cluster.py` | Agrupa focos en incendios (ST-DBSCAN) y traza perímetros |
+| `enrich.py` | Recorta a España y pone municipio y provincia |
+| `sources/` | Partes oficiales de los servicios autonómicos |
+| `merge.py` | **Fusiona** oficial ↔ satélite. El módulo menos obvio del repo |
+| `contexto.py` | Cruza viento, avisos, cortes, ritmo y distancia a población |
+| `suelo.py` | Etiqueta el terreno: monte, cultivo o urbano |
+| `validate.py` | Los 9 invariantes. Aborta la publicación si alguno falla |
+| `build.py` | Manifiesto con las dos latencias y los recuentos |
+| `health.py` | Estado por fuente: qué funciona y qué no, y por qué |
+| `export.py` · `publish.py` | GeoJSON y publicación atómica |
+
+Las tres reglas que explican casi todas las decisiones raras del código:
+
+1. **Un fallo de fuente no tumba el pipeline**, pero **sí se publica que falló**.
+2. **Nada se afirma sin quien lo afirme.** Sin parte oficial no hay estado.
+3. **Ante la duda, no se muestra.** Un hueco explícito es honesto; un cero
+   silencioso se lee como «hoy no arde nada».
 
 ## `evidencias/`
 
