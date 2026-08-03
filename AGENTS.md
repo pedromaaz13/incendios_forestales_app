@@ -69,10 +69,15 @@ PYTHONPATH=src python scripts/build_demo_data.py
 PYTHONPATH=src python scripts/smoke_test.py
 
 cd web
-npm run check                       # tsc --noEmit
+npm test                            # Vitest: la aritmética, en ~300 ms
+npm run check                       # tsc --noEmit + Vitest
 npm run build
-npm run e2e                         # Playwright
+npm run e2e                         # Playwright, ~4,5 min
 ```
+
+Empieza por `npm test`: cubre rumbos, distancias y lectura de ficheros, que es
+donde este frontend falla devolviendo **un número plausible y equivocado**.
+Playwright solo ve la etiqueta final, no el ángulo que la produjo.
 
 `ruff format` **no** es una puerta: el repositorio no está formateado con él y
 CI no lo comprueba. No lo pases en masa —reformatearía 47 ficheros y enterraría

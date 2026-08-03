@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && vitest run",
     "e2e": "playwright test",
-    "capturas": "playwright test tests/e2e/capturas.spec.ts"
+    "capturas": "playwright test tests/e2e/capturas.spec.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "maplibre-gl": "^4.7.1"
@@ -17,6 +19,7 @@
   "devDependencies": {
     "@playwright/test": "^1.62.0",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^4.1.10"
   }
 }

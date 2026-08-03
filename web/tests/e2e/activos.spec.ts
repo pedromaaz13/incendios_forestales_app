@@ -116,3 +116,39 @@ test('quitar los activos deja el panel como estaba', async ({ page }) => {
 
   await expect(page.locator('#activos-resultado')).toBeHidden();
 });
+
+test('los activos sobreviven a recargar la página', async ({ page }) => {
+  await abrir(page);
+  await subir(page, 'activos.csv', CSV);
+  await expect(page.locator('#activos-resultado')).toBeVisible();
+
+  await page.reload();
+
+  // Volver a subir el mismo fichero cada mañana es la fricción que más mata el
+  // uso recurrente. localStorage sigue cumpliendo la promesa: no sale del
+  // navegador.
+  await expect(page.locator('#activos-resultado')).toBeVisible();
+  await expect(page.locator('.activos__fila')).toHaveCount(3);
+});
+
+test('quitar los activos los borra también del almacenamiento', async ({ page }) => {
+  await abrir(page);
+  await subir(page, 'activos.csv', CSV);
+  await page.click('#activos-quitar');
+  await page.reload();
+
+  // Si sobrevivieran al borrado, la promesa de «no se guarda nada que tú no
+  // quieras» dejaría de ser cierta.
+  await expect(page.locator('#activos-resultado')).toBeHidden();
+});
+
+test('el umbral de cercanía lo elige el usuario y se recuerda', async ({ page }) => {
+  await abrir(page);
+  await subir(page, 'activos.csv', CSV);
+
+  await page.selectOption('#activos-km', '25');
+  await expect(page.locator('.activos__recuento')).toContainText('25 km');
+
+  await page.reload();
+  await expect(page.locator('#activos-km')).toHaveValue('25');
+});

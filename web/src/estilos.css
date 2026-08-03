@@ -1232,3 +1232,12 @@ body {
   width: 100%; padding: .4rem; font: inherit; font-size: .8rem; cursor: pointer;
   background: none; border: 1px solid var(--borde); border-radius: 6px; color: var(--texto);
 }
+.activos__distancia {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .5rem; margin: 0 0 .5rem; font-size: .78rem; color: var(--texto-tenue);
+}
+.activos__select {
+  font: inherit; font-size: .8rem; padding: .2rem .3rem;
+  border: 1px solid var(--borde); border-radius: 4px;
+  background: var(--fondo-panel); color: var(--texto);
+}
