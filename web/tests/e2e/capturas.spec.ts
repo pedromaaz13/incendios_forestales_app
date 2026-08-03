@@ -198,3 +198,13 @@ test('captura · 19-ficha-contexto.png', async ({ page }) => {
   await page.waitForTimeout(900);
   await page.screenshot({ path: ruta('19-ficha-contexto.png') });
 });
+
+test('captura · 20-terreno.png', async ({ page }) => {
+  // Sierra de Gata a zoom 10: se ve el mosaico de monte y cultivo bajo los focos.
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=10');
+  await page.locator('[data-capa="suelo"]').click();
+  // El servicio de la EEA tarda: con menos margen sale alguna tesela a medias y
+  // la captura enseña un recuadro negro que parece un fallo de la capa.
+  await page.waitForTimeout(6000);
+  await page.screenshot({ path: ruta('20-terreno.png') });
+});

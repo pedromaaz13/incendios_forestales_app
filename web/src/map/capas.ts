@@ -602,3 +602,75 @@ export function anadirCapasAvisos(mapa: MapaGL): void {
     },
   });
 }
+
+// --- Uso del suelo · CORINE Land Cover 2018 --------------------------------
+
+export const FUENTE_SUELO = 'suelo';
+export const CAPA_SUELO = 'suelo-raster';
+
+/**
+ * Servicio público de la Agencia Europea de Medio Ambiente.
+ *
+ * **No sirve teselas XYZ**: solo `export`, que recibe un recuadro y devuelve la
+ * imagen de esa zona. MapLibre sabe pedirlo así sustituyendo `{bbox-epsg-3857}`
+ * en la plantilla, que es la forma clásica de consumir un WMS.
+ *
+ * Se pide la capa **1** —el ráster— y no la 0, que es la vectorial: a escala de
+ * comunidad la vectorial llega casi vacía (886 bytes frente a 39 KB).
+ *
+ * Nada se descarga ni se almacena: el navegador pide las teselas de lo que se
+ * está mirando, como con cualquier mapa base.
+ */
+const SUELO_URL =
+  'https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM' +
+  '/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857' +
+  '&size=256,256&format=png32&transparent=true&layers=show:1&f=image';
+
+/**
+ * Capa de usos del suelo, por debajo de los incendios.
+ *
+ * Se conservan **los colores originales de CORINE**. Recolorearlos a cuatro
+ * familias sería más legible, pero el servidor entrega el PNG ya pintado: habría
+ * que pedir 44 capas por separado o reprocesar cada tesela en el navegador. La
+ * paleta de CORINE ya agrupa bien a ojo —verdes monte, ocres cultivo, rojos
+ * urbano— así que el problema se resuelve con la leyenda, no con el ráster.
+ *
+ * `beforeId` no es opcional: sin él la capa se añade encima y tapa los
+ * incendios, que son el objeto del visor.
+ */
+export function anadirCapaSuelo(mapa: MapaGL, debajoDe?: string): void {
+  if (!mapa.getSource(FUENTE_SUELO)) {
+    mapa.addSource(FUENTE_SUELO, {
+      type: 'raster',
+      tiles: [SUELO_URL],
+      tileSize: 256,
+      // Por encima de zoom 13 el servicio devuelve teselas casi vacías: CORINE
+      // tiene una unidad mínima de 25 ha y no da más detalle. Se deja de pedir
+      // en vez de pintar recuadros en blanco.
+      maxzoom: 13,
+      attribution:
+        '<a href="https://land.copernicus.eu/pan-european/corine-land-cover">' +
+        'CORINE Land Cover 2018 · EEA</a>',
+    });
+  }
+
+  if (mapa.getLayer(CAPA_SUELO)) return;
+
+  mapa.addLayer(
+    {
+      id: CAPA_SUELO,
+      type: 'raster',
+      source: FUENTE_SUELO,
+      paint: {
+        // Semitransparente para que el mapa base siga leyéndose debajo: sin las
+        // carreteras y los pueblos, saber que algo es «matorral» no ubica nada.
+        //
+        // 0,45 y no más: a 0,55 la paleta de CORINE tapaba por completo el mapa
+        // base y la capa dejaba de situar nada — se convertía en un mosaico de
+        // colores bonito y mudo.
+        'raster-opacity': 0.45,
+      },
+    },
+    debajoDe && mapa.getLayer(debajoDe) ? debajoDe : undefined,
+  );
+}

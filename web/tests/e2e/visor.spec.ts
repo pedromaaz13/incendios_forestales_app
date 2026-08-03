@@ -880,3 +880,59 @@ test('la ficha dice sobre qué terreno cae el incendio', async ({ page }) => {
   await expect(ficha).toContainText('Terreno');
   await expect(ficha).toContainText(/Bosque|Matorral|Cultivo|Pastizal|Superficie/);
 });
+
+/**
+ * Corta las teselas de CORINE con un PNG mínimo.
+ *
+ * Sin esto, estas dos pruebas salen al servidor de la Agencia Europea de Medio
+ * Ambiente, y la suite tiene que correr sin red: en CI eso es una dependencia
+ * externa que puede estar lenta o caída, y aquí lo que se comprueba es **el
+ * orden de las capas y la leyenda**, no que la EEA responda.
+ */
+async function sinTeselasReales(page: import('@playwright/test').Page) {
+  const pngVacio = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.route('**/discomap.eea.europa.eu/**', (ruta) =>
+    ruta.fulfill({ contentType: 'image/png', body: pngVacio }),
+  );
+}
+
+test('la capa de terreno se monta por debajo de los focos', async ({ page }) => {
+  // Si se añadiera encima taparía los incendios, que son el objeto del visor.
+  await sinTeselasReales(page);
+  await abrir(page, '/?lat=40.25&lon=-6.60&zoom=9');
+  await page.locator('[data-capa="suelo"]').click();
+  await page.waitForTimeout(1800);
+
+  const orden = await page.evaluate(() => {
+    const mapa = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    return mapa?.getStyle().layers.map((l) => l.id) ?? [];
+  });
+
+  expect(orden).toContain('suelo-raster');
+  expect(orden.indexOf('suelo-raster')).toBeLessThan(orden.indexOf('hotspots-punto'));
+});
+
+test('la leyenda del terreno explica los colores y su limitación', async ({ page }) => {
+  // CORINE tiene 44 tonos y se conservan tal cual porque el servidor los pinta.
+  // Agrupar por familia es lo que hace legible el mapa sin tocar el ráster.
+  await sinTeselasReales(page);
+  await abrir(page);
+  await page.locator('[data-capa="suelo"]').click();
+  await page.waitForTimeout(1500);
+
+  const leyenda = page.locator('#leyenda');
+
+  await expect(leyenda).toContainText('Tipo de terreno');
+  await expect(leyenda).toContainText('monte, matorral');
+  await expect(leyenda).toContainText('cultivos');
+  // Y la advertencia: es cartografía de 2018, no el estado de hoy.
+  await expect(leyenda).toContainText('CORINE 2018');
+  await expect(leyenda).toContainText('no del');
+  // El negro parece un fallo de carga y no lo es: es la clase 334, terreno que
+  // ya había ardido. Sin explicarlo, el usuario lo lee como un bug.
+  await expect(leyenda).toContainText('ya quemada');
+  await expect(leyenda).toContainText('ya había ardido');
+});
