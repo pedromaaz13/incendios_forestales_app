@@ -41,6 +41,7 @@ from . import firms
 from . import health as health_mod
 from . import merge as merge_mod
 from . import publish as publish_mod
+from . import suelo as suelo_mod
 from . import trafico as trafico_mod
 from . import validate as validate_mod
 from . import wind as wind_mod
@@ -69,6 +70,7 @@ def run(
     con_viento: bool = True,
     con_aire: bool = True,
     con_avisos: bool = True,
+    con_suelo: bool = True,
     con_trafico: bool = True,
     outputs=None,
 ) -> dict:
@@ -156,6 +158,11 @@ def run(
     incidents = contexto_mod.enriquecer(
         incidents, viento, avisos, cortes, hotspots=hotspots
     )
+    # Uso del suelo: separa el incendio forestal de la quema agrícola. Una
+    # consulta por incendio contra el servicio público de la EEA; un fallo deja
+    # el campo nulo porque es contexto, no un requisito para publicar.
+    if con_suelo:
+        incidents = suelo_mod.anadir_uso_del_suelo(incidents)
 
     # --- validación ---------------------------------------------------------
 
@@ -365,6 +372,9 @@ def main() -> None:
     parser.add_argument(
         "--sin-avisos", action="store_true", help="omitir los avisos de AEMET"
     )
+    parser.add_argument(
+        "--sin-suelo", action="store_true", help="omitir el uso del suelo (CORINE)"
+    )
     args = parser.parse_args()
 
     setup_logging(args.verbose)
@@ -374,6 +384,7 @@ def main() -> None:
         con_aire=not args.sin_aire,
         con_trafico=not args.sin_trafico,
         con_avisos=not args.sin_avisos,
+        con_suelo=not args.sin_suelo,
     )
     print(json.dumps(manifest, indent=2, ensure_ascii=False))
 
