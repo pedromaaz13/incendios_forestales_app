@@ -83,7 +83,12 @@ el panel de latencia muestra la hora.
 
 ## Fuera de esta carpeta
 
-- **`CLAUDE.md`** (raíz) · contexto y reglas duras para agentes. Se lee primero.
+- **`AGENTS.md`** (raíz) · contrato de ingeniería y reglas duras. Vale para
+  cualquier agente y se lee primero.
+- **`CLAUDE.md`** (raíz) · punto de entrada de Claude Code: importa `AGENTS.md`
+  y añade el contexto del dominio y el orden de lectura.
+- **`.ai/`** (raíz) · plantillas de tarea, fallo, traspaso y ADR. Ver
+  `.ai/README.md`.
 - **`README.md`** (raíz) · arquitectura y decisiones tomadas, con su porqué.
 - **`PROMPTS.md`** (raíz) · andamio de método, no documentación del producto:
   prompts por hito para abrir sesiones de trabajo.

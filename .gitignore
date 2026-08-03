@@ -15,3 +15,11 @@ web/dist/
 web/public/live/
 web/test-results/
 web/playwright-report/
+
+# Trabajo temporal de los agentes. Las plantillas se versionan; las copias de
+# una sesión concreta no, porque su sitio definitivo es docs/ si resultan
+# importar. `decisions/` sí se versiona: un ADR es memoria del proyecto.
+.ai/tasks/*
+.ai/handoffs/*
+.ai/debugging/*
+!.ai/**/*.template.md
