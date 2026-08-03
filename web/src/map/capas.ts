@@ -7,7 +7,7 @@
  * no llegaría ni de lejos.
  */
 
-import type { ExpressionSpecification, Map as MapaGL } from 'maplibre-gl';
+import type { ExpressionSpecification, GeoJSONSource, Map as MapaGL } from 'maplibre-gl';
 
 export const FUENTE_INCIDENTES = 'incidentes';
 export const FUENTE_HOTSPOTS = 'hotspots';
@@ -679,4 +679,81 @@ export function anadirCapaSuelo(mapa: MapaGL, debajoDe?: string): void {
     },
     debajoDe && mapa.getLayer(debajoDe) ? debajoDe : undefined,
   );
+}
+
+// --- Mis activos ------------------------------------------------------------
+
+export const FUENTE_ACTIVOS = 'activos';
+export const CAPA_ACTIVOS = 'activos-punto';
+export const CAPA_ACTIVOS_TEXTO = 'activos-etiqueta';
+
+/**
+ * Puntos del usuario, coloreados por exposición.
+ *
+ * Van por encima de todo lo demás a propósito: son suyos y tiene que
+ * encontrarlos de un vistazo entre los incendios.
+ *
+ * Llevan anillo blanco para que no se confundan con una detección satelital:
+ * lo que trae el usuario y lo que afirmamos nosotros no pueden parecer el
+ * mismo dato.
+ */
+export function pintarActivos(
+  mapa: MapaGL,
+  puntos: { nombre: string; lon: number; lat: number; nivel: string }[],
+): void {
+  const datos: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: puntos.map((p) => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+      properties: { nombre: p.nombre, nivel: p.nivel },
+    })),
+  };
+
+  const fuente = mapa.getSource(FUENTE_ACTIVOS) as GeoJSONSource | undefined;
+  if (fuente) {
+    fuente.setData(datos);
+    return;
+  }
+  if (!puntos.length) return;
+
+  mapa.addSource(FUENTE_ACTIVOS, { type: 'geojson', data: datos });
+  // Anillo blanco grueso en vez de un icono propio: no hay sprite cargado en
+  // este estilo, y referenciar uno inexistente deja la capa invisible sin dar
+  // error. El anillo es lo que los separa de las detecciones a simple vista.
+  mapa.addLayer({
+    id: CAPA_ACTIVOS,
+    type: 'circle',
+    source: FUENTE_ACTIVOS,
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 4, 12, 8],
+      'circle-color': [
+        'match',
+        ['get', 'nivel'],
+        'alta', '#d93025',
+        'media', '#e8a33d',
+        'duda', '#8a8f98',
+        '#3d7dd8',
+      ],
+      'circle-stroke-width': 2.5,
+      'circle-stroke-color': '#ffffff',
+    },
+  });
+  mapa.addLayer({
+    id: CAPA_ACTIVOS_TEXTO,
+    type: 'symbol',
+    source: FUENTE_ACTIVOS,
+    minzoom: 9,
+    layout: {
+      'text-field': ['get', 'nombre'],
+      'text-size': 11,
+      'text-offset': [0, 1.2],
+      'text-anchor': 'top',
+    },
+    paint: {
+      'text-color': '#1b1d21',
+      'text-halo-color': '#ffffff',
+      'text-halo-width': 1.5,
+    },
+  });
 }
