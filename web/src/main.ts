@@ -18,6 +18,7 @@ import {
   CAPA_GRUPOS,
   CAPA_AVISOS,
   CAPA_AVISOS_BORDE,
+  CAPA_SUELO,
   CAPA_TRAFICO,
   CAPA_TRAFICO_INCENDIO,
   CAPA_HOTSPOTS,
@@ -32,12 +33,14 @@ import {
   FUENTE_PERIMETROS,
   FUENTE_AIRE,
   FUENTE_AVISOS,
+  FUENTE_SUELO,
   FUENTE_TRAFICO,
   FUENTE_VIENTO,
   anadirCapaAire,
   anadirCapasGrupos,
   hacerRuidososLosErrores,
   registrarCifrasDeGrupo,
+  anadirCapaSuelo,
   anadirCapasAvisos,
   anadirCapasTrafico,
   anadirCapaHotspots,
@@ -95,7 +98,7 @@ const estado: Estado = {
   seleccionado: null,
   capas: {
     hotspots: true, perimetros: false, viento: false,
-    aire: false, trafico: false, avisos: false,
+    aire: false, trafico: false, avisos: false, suelo: false,
   },
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
   dias: [],
@@ -364,6 +367,7 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     aire: () => mapa.getSource(FUENTE_AIRE),
     trafico: () => mapa.getSource(FUENTE_TRAFICO),
     avisos: () => mapa.getSource(FUENTE_AVISOS),
+    suelo: () => mapa.getSource(FUENTE_SUELO),
   }[capa];
   if (ya?.()) return;
 
@@ -430,6 +434,13 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     anadirCapasTrafico(mapa);
   }
 
+  if (capa === 'suelo') {
+    // No hay GeoJSON que descargar: es un servicio de teselas. Se monta por
+    // debajo de los focos para no taparlos, que son el objeto del visor.
+    anadirCapaSuelo(mapa, CAPA_HOTSPOTS);
+    return;
+  }
+
   if (capa === 'avisos') {
     const datos = await cargarGeoJson('avisos.geojson');
     if (!datos) return;
@@ -448,6 +459,7 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     aire: [CAPA_AIRE],
     trafico: [CAPA_TRAFICO, CAPA_TRAFICO_INCENDIO],
     avisos: [CAPA_AVISOS, CAPA_AVISOS_BORDE],
+    suelo: [CAPA_SUELO],
   };
 
   const aplicar = () => {
@@ -703,6 +715,7 @@ function construirConmutadores(mapa: MapaGL): void {
     ['aire', 'Calidad del aire'],
     ['trafico', 'Carreteras cortadas'],
     ['avisos', 'Avisos de AEMET'],
+    ['suelo', 'Tipo de terreno'],
   ];
 
   nodo.innerHTML = capas
@@ -788,6 +801,47 @@ function pintarLeyenda(): void {
       <span class="leyenda__muestra leyenda__muestra--grupo">7</span>
       Varios incendios juntos: la cifra los cuenta. Acerca para separarlos
     </div>
+    ${
+      estado.capas.suelo
+        ? `<p class="leyenda__grupo">Tipo de terreno</p>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#3a9c3a"></span>
+             Verdes <span class="leyenda__nota">monte, matorral y pastizal</span>
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#e8d24a"></span>
+             Ocres <span class="leyenda__nota">cultivos y prados</span>
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#d24b4b"></span>
+             Rojos <span class="leyenda__nota">urbano e industrial</span>
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#66a3d2"></span>
+             Azules <span class="leyenda__nota">agua y humedales</span>
+           </div>
+           <div class="leyenda__fila">
+             <span class="leyenda__muestra leyenda__muestra--zona" style="--c:#111111"></span>
+             Negro <span class="leyenda__nota">superficie ya quemada en 2018</span>
+           </div>
+           <!-- El negro sorprende la primera vez y parece un fallo de carga. No
+                lo es: CORINE tiene una clase 334 «zonas quemadas» y su paleta la
+                pinta en negro. En Sierra de Gata son las cicatrices del incendio
+                de 2015. Explicarlo convierte una mancha rara en el dato más
+                interesante de la capa: dónde ya ardió. -->
+           <!-- La paleta original de CORINE tiene 44 tonos y aquí se conservan
+                tal cual: el servidor entrega el PNG ya pintado. Agrupar por
+                familia de color es lo que hace legible el mapa sin tocar el
+                ráster, porque el ojo ya agrupa así. La clase exacta de cada
+                incendio está en su ficha. -->
+           <p class="leyenda__aviso">
+             Cartografía <b>CORINE 2018</b>: es una foto de ese año, no del
+             estado actual del terreno. Sirve para saber si un incendio está en
+             monte o en cultivo, no para medir superficies. Las manchas negras
+             son terreno que <b>ya había ardido</b> cuando se levantó el mapa.
+           </p>`
+        : ''
+    }
     ${
       estado.capas.avisos
         ? `<p class="leyenda__grupo">Avisos oficiales de AEMET</p>
