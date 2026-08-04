@@ -660,3 +660,59 @@ def test_el_detalle_del_parte_llega_al_incidente(now):
     fila = merge.build_incidents(emparejados, clusters).iloc[0]
 
     assert fila["detalle_oficial"] == "CV-223 Km4, a mano derecha"
+
+
+# --- registro de la separación ----------------------------------------------
+#
+# `sources.json` se sobrescribe en cada ejecución y nada guarda el histórico, así
+# que publicar el número no basta para medir `precision_m`: haría falta una serie
+# y solo hay una foto. El log de Actions dura 90 días y sí acumula.
+
+
+def test_la_separacion_se_registra_por_fuente(caplog):
+    import logging
+
+    import pandas as pd
+
+    from incendios import merge as merge_mod
+
+    official = pd.DataFrame({
+        "source_id": ["jcyl", "jcyl", "112cv"],
+        "match_distance_m": [400.0, 600.0, 250.0],
+    })
+
+    with caplog.at_level(logging.INFO, logger="incendios.merge"):
+        merge_mod._registrar_separacion(official)
+
+    lineas = [r.getMessage() for r in caplog.records if "SEPARACION" in r.getMessage()]
+    assert any("jcyl" in x and "emparejados=2" in x and "mediana_m=500" in x for x in lineas)
+    assert any("112cv" in x and "emparejados=1" in x for x in lineas)
+
+
+def test_una_fuente_sin_emparejar_tambien_se_registra(caplog):
+    """El cero informa: dice que la fuente respondió pero ninguno de sus partes
+    coincidió con un foco. Callarlo haría indistinguible «no casó» de «no se
+    ejecutó»."""
+    import logging
+
+    import pandas as pd
+
+    from incendios import merge as merge_mod
+
+    official = pd.DataFrame({
+        "source_id": ["jcyl"],
+        "match_distance_m": [float("nan")],
+    })
+
+    with caplog.at_level(logging.INFO, logger="incendios.merge"):
+        merge_mod._registrar_separacion(official)
+
+    assert any("emparejados=0" in r.getMessage() for r in caplog.records)
+
+
+def test_sin_la_columna_no_lanza(caplog):
+    import pandas as pd
+
+    from incendios import merge as merge_mod
+
+    merge_mod._registrar_separacion(pd.DataFrame({"source_id": ["jcyl"]}))
