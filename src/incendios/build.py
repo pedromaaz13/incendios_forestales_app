@@ -41,6 +41,12 @@ INCIDENT_WEB_FIELDS = [
     *INCIDENT_SCHEMA,
     "radio_est_km",
     "ultima_observacion_h",
+    # Cuánto se separan el parte oficial y el centroide satelital del mismo
+    # incendio. Va aquí y no en `INCIDENT_SCHEMA` porque el esquema es lo que el
+    # validador exige, y un incendio sin parte oficial no tiene esta distancia:
+    # exigirla obligaría a inventar un cero, que se leería como «coinciden
+    # exactamente» cuando lo cierto es que no hay con qué comparar.
+    "official_separacion_m",
     *contexto.CAMPOS_CONTEXTO,
     *suelo.CAMPOS_SUELO,
 ]

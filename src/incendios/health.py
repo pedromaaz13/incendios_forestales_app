@@ -71,6 +71,24 @@ class SourceHealth:
     quota_remaining: int | None = None
     quota_limit: int | None = None
 
+    # Cuántos partes de esta fuente casaron con una detección satelital en esta
+    # ejecución, y la mediana de lo que se separan.
+    #
+    # Existe para poder medir `precision_m`, que hoy está declarado a ojo en
+    # `adapters.py` —500 m para JCyL, 100 m para el 112— y alimenta el radio que
+    # se pinta en el mapa. El pipeline ya calculaba la distancia en `merge.py` y
+    # la tiraba en cada ejecución.
+    #
+    # Una sola ejecución no basta: el 04-08-2026, de 11 incendios oficiales
+    # activos solo 1 tenía un foco a menos de 3 km. Los partes cubren fuegos
+    # pequeños que VIIRS no ve y el satélite ve fuegos sin reportar. Publicando
+    # esto en cada ejecución, la medición se acumula sola.
+    #
+    # **No es la precisión de la fuente**: es el error combinado con el del
+    # satélite, así que es una cota superior. De ahí «separación».
+    emparejados: int | None = None
+    separacion_mediana_m: float | None = None
+
     # Marca del dato más reciente que ha entregado la fuente, no de la descarga.
     # `None` cuando no aplica: una fuente oficial sin incendios hoy está
     # legítimamente vacía, no obsoleta.
@@ -152,6 +170,8 @@ class SourceHealth:
             "error": self.error,
             "consecutive_failures": int(self.consecutive_failures),
             "attribution": self.attribution,
+            "emparejados": self.emparejados,
+            "separacion_mediana_m": self.separacion_mediana_m,
             "quota_remaining": self.quota_remaining,
             "quota_limit": self.quota_limit,
             # Las dos edades viajan por separado a propósito: el frontend tiene
@@ -245,6 +265,18 @@ def from_official_sources(registry, results: dict[str, pd.DataFrame], now: datet
         df = results.get(meta.source_id)
         exito = configurada and df is not None and not df.empty
 
+        # Cuántos partes de esta fuente casaron con una detección satelital y
+        # cuánto se separan. `merge` lo calcula y hasta ahora se tiraba.
+        emparejados: int | None = None
+        separacion: float | None = None
+        if df is not None and "match_distance_m" in df.columns:
+            distancias = pd.to_numeric(df["match_distance_m"], errors="coerce").dropna()
+            emparejados = len(distancias)
+            # La mediana y no la media: un solo parte mal situado —el centroide
+            # de un municipio en vez del fuego— arrastraría la media decenas de
+            # kilómetros y haría creer que la fuente es peor de lo que es.
+            separacion = round(float(distancias.median()), 1) if len(distancias) else None
+
         salida.append(
             SourceHealth(
                 id=meta.source_id,
@@ -259,6 +291,8 @@ def from_official_sources(registry, results: dict[str, pd.DataFrame], now: datet
                 records=0 if df is None else len(df),
                 error=None if configurada else "endpoint sin descubrir",
                 attribution=meta.attribution,
+                emparejados=emparejados,
+                separacion_mediana_m=separacion,
             )
         )
     return salida

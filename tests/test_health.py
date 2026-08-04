@@ -174,6 +174,12 @@ def test_block_matches_the_4_2_contract():
         # distingue de "cero peticiones restantes".
         "quota_remaining",
         "quota_limit",
+        # Cuántos partes casaron con una detección satelital y cuánto se
+        # separan. Existen para poder medir `precision_m`, que hoy está
+        # declarado a ojo y alimenta el radio que se pinta en el mapa: el
+        # pipeline calculaba la distancia en `merge` y la tiraba.
+        "emparejados",
+        "separacion_mediana_m",
         # Las dos edades viajan por separado: el frontend tiene que poder
         # distinguir «no hemos podido descargar» de «la fuente dejó de publicar».
         "data_age_seconds",
@@ -384,3 +390,99 @@ def test_la_edad_del_dato_se_publica_aunque_la_fuente_este_sana():
 
     assert bloque["data_age_seconds"] == 5 * 3600
     assert bloque["max_data_age_seconds"] == 12 * 3600
+
+
+# --- separación oficial ↔ satélite ------------------------------------------
+#
+# Existe para poder medir `precision_m`, que hoy está declarado a ojo en
+# `adapters.py` —500 m para JCyL, 100 m para el 112 valenciano— y alimenta el
+# radio del círculo que se pinta en el mapa. `merge` calculaba la distancia
+# desde siempre y la tiraba en cada ejecución.
+#
+# Una sola ejecución no basta: el 04-08-2026, de 11 incendios oficiales activos
+# solo 1 tenía un foco a menos de 3 km. Publicándolo, la medición se acumula.
+
+
+def _fuente_falsa():
+    from incendios.sources.base import SourceMeta
+
+    class _Falsa:
+        meta = SourceMeta(
+            source_id="demo", name="Demo", region="Demo",
+            url="https://demo.invalid/query", precision_m=500.0,
+        )
+
+    return _Falsa()
+
+
+def test_la_separacion_sale_de_las_distancias_de_la_fusion():
+    resultados = {
+        "demo": pd.DataFrame({
+            "external_id": ["a", "b", "c"],
+            "match_distance_m": [100.0, 300.0, 500.0],
+        })
+    }
+
+    estado = health.from_official_sources([_fuente_falsa()], resultados, now=NOW)[0]
+
+    assert estado.emparejados == 3
+    assert estado.separacion_mediana_m == 300.0
+
+
+def test_los_partes_sin_emparejar_no_cuentan():
+    """Un parte que no casó con ningún foco no dice nada sobre la precisión de
+    la fuente: solo que ese incendio no lo vio el satélite."""
+    resultados = {
+        "demo": pd.DataFrame({
+            "external_id": ["a", "b", "c"],
+            "match_distance_m": [200.0, float("nan"), float("nan")],
+        })
+    }
+
+    estado = health.from_official_sources([_fuente_falsa()], resultados, now=NOW)[0]
+
+    assert estado.emparejados == 1
+    assert estado.separacion_mediana_m == 200.0
+
+
+def test_la_mediana_aguanta_un_parte_disparatado():
+    """Un parte situado en el centroide del municipio en vez de en el fuego se
+    va decenas de kilómetros. Con la media arrastraría el número entero y haría
+    creer que la fuente es mucho peor de lo que es."""
+    resultados = {
+        "demo": pd.DataFrame({
+            "external_id": list("abcde"),
+            "match_distance_m": [180.0, 200.0, 220.0, 240.0, 60_000.0],
+        })
+    }
+
+    estado = health.from_official_sources([_fuente_falsa()], resultados, now=NOW)[0]
+
+    assert estado.separacion_mediana_m == 220.0
+
+
+def test_sin_ninguna_coincidencia_queda_nulo_y_no_cero():
+    """Cero se leería como «coinciden exactamente», que es afirmar algo que no
+    sabemos. El hueco tiene que verse como hueco."""
+    resultados = {
+        "demo": pd.DataFrame({
+            "external_id": ["a"],
+            "match_distance_m": [float("nan")],
+        })
+    }
+
+    estado = health.from_official_sources([_fuente_falsa()], resultados, now=NOW)[0]
+
+    assert estado.emparejados == 0
+    assert estado.separacion_mediana_m is None
+
+
+def test_una_fuente_sin_la_columna_no_revienta():
+    """El pipeline puede llamar antes de fusionar, o una fuente puede no llegar
+    nunca a `merge`."""
+    resultados = {"demo": pd.DataFrame({"external_id": ["a"]})}
+
+    estado = health.from_official_sources([_fuente_falsa()], resultados, now=NOW)[0]
+
+    assert estado.emparejados is None
+    assert estado.separacion_mediana_m is None

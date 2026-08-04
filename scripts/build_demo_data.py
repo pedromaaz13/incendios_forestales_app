@@ -392,7 +392,25 @@ def construir_salud(official: pd.DataFrame) -> HealthReport:
     ))
 
     for source_id, (nombre, region, precision) in FUENTES_META.items():
-        registros = int((official["source_id"] == source_id).sum())
+        de_esta = official["source_id"] == source_id
+        registros = int(de_esta.sum())
+
+        # La separación se calcula de los mismos datos, no se inventa.
+        #
+        # Rellenar a mano un campo del contrato es exactamente lo que hizo que
+        # `igr_level` y los medios pareciesen funcionar durante meses: la demo
+        # los enseñaba y producción los publicaba nulos. Aquí el riesgo es el
+        # inverso —la demo en blanco y producción con dato—, pero el remedio es
+        # el mismo: derivarlo del pipeline.
+        emparejados = None
+        separacion = None
+        if "match_distance_m" in official.columns:
+            distancias = pd.to_numeric(
+                official.loc[de_esta, "match_distance_m"], errors="coerce"
+            ).dropna()
+            emparejados = len(distancias)
+            separacion = round(float(distancias.median()), 1) if len(distancias) else None
+
         # INFOCAM entra en error a propósito: el panel de estado tiene que
         # enseñar el caso interesante, no ocho filas verdes.
         caida = source_id == "infocam"
@@ -405,6 +423,8 @@ def construir_salud(official: pd.DataFrame) -> HealthReport:
             error="HTTP 503 en el portal de origen" if caida else None,
             consecutive_failures=3 if caida else 0,
             attribution=nombre,
+            emparejados=None if caida else emparejados,
+            separacion_mediana_m=None if caida else separacion,
         ))
 
     informe.add(SourceHealth(

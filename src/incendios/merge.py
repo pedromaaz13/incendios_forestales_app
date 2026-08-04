@@ -141,6 +141,10 @@ def match(
     fires["confirmed_by"] = ""
     fires["official_name"] = None
     fires["official_status"] = None
+    # Nula por defecto, no cero: un incendio sin parte oficial no tiene
+    # separación que medir, y un cero se leería como «las dos observaciones
+    # coinciden exactamente».
+    fires["official_separacion_m"] = None
 
     if official.empty or fires.empty:
         log.info("Fusión omitida: official=%d fires=%d", len(official), len(fires))
@@ -233,6 +237,21 @@ def match(
             # la publica hoy —«AP-7 Km364 >sur»— y es lo que sitúa el fuego
             # respecto a una carretera, que es como la gente localiza las cosas.
             official_detalle=("detalle", _primer_texto),
+            # Cuánto se separan el parte oficial y el centroide satelital del
+            # mismo incendio. Se calculaba desde siempre y se tiraba en cada
+            # ejecución, que es la razón de que `precision_m` siga declarado a
+            # ojo en `adapters.py` con un comentario de «provisional hasta
+            # medirlo».
+            #
+            # **No es la precisión de la fuente oficial**, es el error
+            # combinado: el centroide de un grupo VIIRS tampoco es el punto de
+            # ignición y 375 m de resolución ya ponen su parte. Sirve de cota
+            # superior, y por eso se llama separación y no precisión.
+            #
+            # Se agrega con el mínimo: si dos partes confirman el mismo fuego,
+            # el que mejor lo sitúa es el que informa de cuánto puede afinar la
+            # fuente.
+            official_separacion_m=("match_distance_m", "min"),
         )
         fires = fires.set_index("fire_id")
         for columna in by_fire.columns:
