@@ -264,7 +264,42 @@ def match(
         "Fusión: %d/%d oficiales emparejados · %d clusters confirmados",
         int(ok.sum()), len(official), int(fires["confirmed_by"].astype(bool).sum()),
     )
+    _registrar_separacion(official)
     return official, fires
+
+
+def _registrar_separacion(official: pd.DataFrame) -> None:
+    """Deja la separación por fuente en el log, con formato buscable.
+
+    Por qué al log y no solo a `sources.json`: ese fichero se **sobrescribe** en
+    cada ejecución y nada guarda el histórico, así que publicar el número no
+    basta para poder medir `precision_m` — haría falta una serie y solo hay una
+    foto. Los registros de Actions duran 90 días, así que esto sí acumula:
+
+        gh run list --workflow=publicar.yml --limit 100 --json databaseId \\
+          -q '.[].databaseId' | xargs -I{} gh run view {} --log \\
+          | grep SEPARACION
+
+    Es el apaño barato. El sitio bueno es el histórico en R2, que ya está
+    escrito en `ingest.yml` y espera una cuenta de Cloudflare.
+
+    El prefijo va en mayúsculas y sin acentos a propósito: es lo que hace que
+    `grep` lo encuentre entre miles de líneas de log.
+    """
+    if "match_distance_m" not in official.columns or official.empty:
+        return
+
+    for source_id, bloque in official.groupby("source_id"):
+        distancias = pd.to_numeric(bloque["match_distance_m"], errors="coerce").dropna()
+        if not len(distancias):
+            log.info("SEPARACION %s emparejados=0 mediana_m=- partes=%d",
+                     source_id, len(bloque))
+            continue
+        log.info(
+            "SEPARACION %s emparejados=%d mediana_m=%.0f min_m=%.0f max_m=%.0f partes=%d",
+            source_id, len(distancias), distancias.median(),
+            distancias.min(), distancias.max(), len(bloque),
+        )
 
 
 _STATUS_RANK = {
