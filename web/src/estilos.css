@@ -1243,5 +1243,7 @@ body {
 }
 .leyenda__muestra--linea { width: 18px; height: 3px; background: var(--c); border-radius: 2px; }
 .leyenda__muestra--via {
-  width: 18px; height: 0; border-top: 2px dashed #9aa7b8;
+  /* Igualado al color real de la capa. La leyenda que no coincide con
+     el mapa es peor que no tener leyenda. */
+  width: 18px; height: 0; border-top: 2px dashed #8794a8;
 }

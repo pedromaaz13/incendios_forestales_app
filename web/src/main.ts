@@ -960,8 +960,8 @@ function pintarLeyenda(): void {
            ${
              estado.capas.electricas
                ? `<div class="leyenda__fila">
-                    <span class="leyenda__muestra leyenda__muestra--linea" style="--c:#e8a33d"></span>
-                    Naranjas <span class="leyenda__nota">líneas de alta tensión · a más grosor, más kV</span>
+                    <span class="leyenda__muestra leyenda__muestra--linea" style="--c:#1668c9"></span>
+                    Azules <span class="leyenda__nota">líneas de alta tensión · a más grosor y más intenso, más kV</span>
                   </div>`
                : ''
            }
@@ -969,7 +969,7 @@ function pintarLeyenda(): void {
              estado.capas.ferrocarril
                ? `<div class="leyenda__fila">
                     <span class="leyenda__muestra leyenda__muestra--via"></span>
-                    Discontinua gris <span class="leyenda__nota">ferrocarril</span>
+                    Discontinua oscura <span class="leyenda__nota">ferrocarril</span>
                   </div>`
                : ''
            }
