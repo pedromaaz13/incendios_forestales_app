@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Foto del 3 de agosto de 2026. Se actualiza al cerrar cada hito.
+Foto del 4 de agosto de 2026. Se actualiza al cerrar cada hito.
 
 Todo lo que dice este documento está comprobado contra el repositorio o contra
 la URL de producción en la fecha de arriba. Donde no hay comprobación posible,
@@ -34,7 +34,7 @@ Recuento real de la última ejecución:
 
 | Capa | Fichero | Registros |
 |---|---|---|
-| Incidentes | `incidents.geojson` | 48 |
+| Incidentes | `incidents.geojson` | 65 |
 | Focos de calor | `hotspots.geojson` | fiables + confianza baja etiquetada |
 | Perímetros estimados | `perimeters.geojson` | uno por incendio agrupado |
 | Viento, temperatura y humedad | `wind.geojson` | 230 nodos |
@@ -44,8 +44,17 @@ Recuento real de la última ejecución:
 | Estado de fuentes | `sources.json` | 8 fuentes |
 | Manifiesto | `manifest.json` | latencias y recuentos |
 
-**Dos fuentes oficiales activas**: `jcyl` (11 partes) y `112cv` (7). El resto
-sigue sin endpoint.
+Y tres ficheros estáticos que no salen del pipeline sino de un script de
+preparación, servidos aparte y **descargados solo al usarse**, para no gastar el
+presupuesto de carga inicial de 900 KB (RNF-02) en quien nunca los abre:
+
+| Fichero | Peso | Se pide cuando |
+|---|---|---|
+| `nucleos-indice.json` | 520 KB gz | se teclea en el buscador |
+| `electricas.geojson` | 260 KB gz | se enciende la capa |
+| `ferrocarril.geojson` | 440 KB gz | se enciende la capa |
+
+**Dos fuentes oficiales activas**: `jcyl` y `112cv`. El resto sigue sin endpoint.
 
 Cada incidente publica, además de su posición e intensidad:
 
@@ -63,6 +72,7 @@ Cada incidente publica, además de su posición e intensidad:
 | `cortes_cerca` · `_por_incendio` | Accesos cortados a menos de 15 km | DGT |
 | `focos_recientes` · `crecimiento_ha_h` | Superficie nueva ya detectada en 6 h | FIRMS |
 | `ultima_observacion_h` | Cuánto hace que se vio calor ahí | FIRMS |
+| `official_separacion_m` | Cuánto se separan el parte oficial y el centroide satelital | Derivado |
 
 ### Las dos latencias
 
@@ -88,7 +98,7 @@ frontend enseña los dos números y nunca uno solo.
 | `firms.py` | Completo | Ingesta NASA FIRMS · VIIRS ×3 + MODIS |
 | `clean.py` | Completo | Confianza, máscara industrial, dedup espacio-temporal |
 | `cluster.py` | Completo | ST-DBSCAN + perímetros cóncavos |
-| `merge.py` | Completo | Precisión derivada del sensor |
+| `merge.py` | Completo | Precisión por sensor · publica la separación oficial ↔ satélite |
 | `enrich.py` | Completo | Geocoding inverso sobre la capa del IGN (8.220 municipios) |
 | `export.py` | Completo | GeoJSON, PMTiles, Parquet |
 | `validate.py` | Completo | Los 8 invariantes de 4.4 más el 9: ningún estado sin quien lo afirme |
@@ -100,7 +110,7 @@ frontend enseña los dos números y nunca uno solo.
 | `sources/cv112.py` | Completo | 112 CV · filtra incidencias que no son incendio |
 | `aire.py` | Completo | CAMS vía Open-Meteo, bandas EAQI oficiales |
 | `trafico.py` | Completo | DGT DATEX II v3.7, feed nacional |
-| `health.py` | Completo | Estado por **edad del dato**, no de la descarga |
+| `health.py` | Completo | Estado por **edad del dato**, no de la descarga · margen medido por fuente |
 | `sources/` | 2 de 5 conectadas | **`infocam` sin descubrir**; `bombers` e `infoca` sin feed público conocido |
 
 ### Frontend (TypeScript + MapLibre, sin framework)
@@ -115,22 +125,43 @@ frontend enseña los dos números y nunca uno solo.
 | Filtros (período, confianza, origen, sensor) | Completo |
 | Viento animado con partículas | Completo |
 | Leyenda por intensidad y por confirmación | Completo |
-| Panel de estado de fuentes | Completo |
+| Panel de estado de fuentes | Completo · con margen declarado y medido |
+| Buscador de núcleos | Completo · 37.497 del IGN, en local, sin geocoder externo |
+| «Mis activos» | Completo · CSV/GeoJSON propio, sin salir del navegador |
+| Cruces entre capas | Completo · cinco preguntas sobre lo publicado |
+| Capa de terreno · CORINE 2018 | Completo |
+| Infraestructura crítica | Completo · alta tensión y ferrocarril desde OSM |
+| Mapas base | Completo · **Sobrio por defecto**, Normal, Satélite, Relieve, Oscuro |
+| Panel en móvil | Completo · cajón con botón, velo y cierre por Escape |
 | Aviso permanente del 112 | Completo, no ocultable |
 
 ---
 
 ## 4 · Pruebas
 
-```
-481 pruebas pasan · 3 saltadas · cobertura 94,12 %   (mínimo exigido: 85 %)
-81 pruebas E2E en Playwright
-```
+Tres capas, cada una para un tipo de fallo distinto. **669 pruebas.**
 
+| Capa | Nº | Tarda | Qué caza que las otras no |
+|---|---:|---|---|
+| **Vitest** | 33 | ~300 ms | Rumbos, distancias, lectura de CSV |
+| **pytest** | 516 | ~1,8 min | Fusión, invariantes, adaptadores, salud. Cobertura **94,19 %** (mínimo 85 %) |
+| **Playwright** | 120 | ~4,5 min | Que la interfaz no engañe |
 
-Los 3 `skip` no son deuda escondida. Cada uno cita el requisito que espera:
-dependen de la capa del IGN en un caso y de decisiones de un hito posterior en
-los otros dos.
+Vitest se añadió el 04-08 y **encontró un bug en su primera ejecución**:
+`Number('')` es `0` y `Number.isFinite(0)` es cierto, así que una fila de CSV con
+la coordenada vacía se colaba como punto (0, 0) —el golfo de Guinea— y aparecía
+en el mapa como un activo normal. Había pasado los 107 escenarios de Playwright
+sin despeinarse, porque a través de la interfaz solo se ve la etiqueta final, no
+el ángulo que la produjo.
+
+CI ejecuta las tres. Hasta el 04-08 llamaba a `npx tsc --noEmit` directamente y
+las unitarias no bloqueaban nada: un test que no cierra la puerta es
+documentación cara.
+
+Los 2 `skip` no son deuda escondida: cada uno cita el requisito de un hito
+posterior que espera. El de RF-P-07 se cerró el 04-08 con 20 coordenadas
+conocidas contra los recintos del IGN — acertó las 20, incluidas las
+denominaciones oficiales en lengua cooficial.
 
 La suite corre sin red. Toda fuente externa tiene su fixture de regresión en
 `tests/fixtures/`, y cuando un parseo falla en producción el payload que lo
@@ -192,8 +223,39 @@ comprueba si ha vuelto.
 
 ## 6 · Plan y próximos pasos
 
-Actualizado el 03-08-2026. Los bloques 0, 1, 2 y 4 están **cerrados y en
+Actualizado el 04-08-2026. Los bloques 0, 1, 2 y 4 están **cerrados y en
 producción**; el 3 está bloqueado y el 5 sin empezar.
+
+### Lo cerrado el 04-08-2026
+
+Doce cambios en producción, todos con CI en verde y verificados contra la URL
+pública, no solo en local:
+
+| PR | Qué |
+|---:|---|
+| #39 | Sistema de trabajo con agentes: `AGENTS.md` y `.ai/` |
+| #40 | **RF-P-07 validado** · 20 coordenadas conocidas contra los recintos del IGN, 20 aciertos |
+| #41 | Buscador de núcleos y «Mis activos» |
+| #42 | **Vitest**, umbral de cercanía configurable y activos que sobreviven a recargar |
+| #43 | CI ejecuta las pruebas unitarias |
+| #44 | El desplegable del buscador tapaba la lista de fuentes |
+| #45 | Capa de infraestructura crítica |
+| #46 | `docs/ARQUITECTURA.md` con diagramas y análisis de escalabilidad |
+| #47 | **Mapa sobrio por defecto** y la infraestructura deja de competir con el fuego |
+| #48 | **El panel se puede abrir desde el móvil** |
+| #49 · #50 · #51 | La separación oficial ↔ satélite deja de tirarse, persiste y se ve |
+
+Tres fallos silenciosos salieron por el camino, y ninguno daba error:
+
+- **El panel era inalcanzable desde un teléfono.** El CSS ya contemplaba
+  `data-abierto` desde que se diseñó como cajón, pero nadie lo ponía nunca. No
+  había puerta — y el móvil no es el caso secundario aquí.
+- **Siete variables CSS inventadas.** Una variable que no existe no da error: el
+  navegador descarta la declaración y sigue, así que el desplegable salía
+  transparente y los bordes del panel de cruces llevaban invisibles desde que se
+  montó.
+- **Una coordenada vacía se colaba como punto (0, 0)**, el golfo de Guinea. Lo
+  cazó Vitest en su primera ejecución tras pasar 107 escenarios de Playwright.
 
 ---
 
@@ -284,10 +346,51 @@ gigabytes para mirar unas decenas de coordenadas.
 
 ### Bloqueado en ti
 
-1. **`infocam` (Castilla-La Mancha).** Ni su portal de datos abiertos —la API
-   CKAN da 404— ni las rutas del sitio de la Junta exponen un visor localizable.
-   Necesita DevTools sobre su visor, como se hizo con INFORCYL.
-2. **Registro para el producto de fuego de Sentinel-3.**
+Los dos primeros no son «una capa más»: cambian lo que es la aplicación.
+
+**1 · MTG · detección cada 10 minutos.** Hoy el dato tiene entre 2 y 20 h. MTG
+es geoestacionario y publica cada 10 min — la diferencia entre un visor de
+incendios y algo que se parece a Windy. El catálogo de EUMETSAT ya se sondeó sin
+clave y filtra bien por España y fecha; solo falta poder descargar.
+
+- Entra en `https://api.eumetsat.int/api-key/` con tu cuenta de EUMETSAT.
+- Copia el **consumer key** y el **consumer secret**.
+- GitHub → *Settings* → *Secrets and variables* → *Actions*: crea
+  `EUMETSAT_KEY` y `EUMETSAT_SECRET`.
+
+*«My EUMETCast subscriptions» no es el camino* — ese servicio exige una estación
+de recepción física. Comprobado el 03-08.
+
+**2 · Histórico en Cloudflare R2.** Responde «¿cuántas veces ha ardido a 5 km de
+aquí en cinco años?»: convierte el visor en un **dataset de riesgo**, que no se
+copia deprisa porque exige haber estado acumulando. Además desbloquea la máscara
+de falsos positivos, que necesita histórico para construirse, y es lo único que
+permitirá medir `precision_m` con una serie en vez de con una foto.
+
+**No hay que construir nada.** `ingest.yml` ya escribe Parquet particionado en
+R2 y está desactivado a propósito, con las instrucciones dentro.
+
+- Cuenta en Cloudflare. El plan gratuito de R2 da 10 GB **sin coste de salida**.
+- Crea un bucket, p. ej. `incendios-historico`.
+- R2 → *Manage API Tokens* → uno con lectura y escritura. Da **Access Key ID** y
+  **Secret Access Key**.
+- Anota el **Account ID** (barra lateral de R2).
+- En GitHub — secretos: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`;
+  variables: `R2_BUCKET`, `R2_ACCOUNT_ID`.
+
+Los nombres son los que **ya espera** el workflow; cambiarlos lo rompería sin
+dar error hasta la primera ejecución. Aviso: su cron es `*/10`, no `*/30`, así
+que encenderlo **triplica** las ejecuciones de Actions.
+
+**3 · `infocam` (Castilla-La Mancha).** Ni su portal de datos abiertos —la API
+CKAN da 404— ni las rutas del sitio de la Junta exponen un visor localizable.
+Necesita DevTools sobre su visor, como se hizo con INFORCYL.
+
+**4 · Visibilidad del repositorio.** Decisión de producto, en espera. Lo
+comprobado: los endpoints autonómicos **ya están en el historial de git** y el
+repositorio es público, así que moverlos a una carpeta ignorada sería teatro. O
+se hace privado, o se asume que son públicos — que lo son: son URLs de
+administraciones públicas, localizables con DevTools en diez minutos.
 
 ### Bloqueado en terceros
 
@@ -298,12 +401,34 @@ gigabytes para mirar unas decenas de coordenadas.
 
 ### Pendiente, no bloqueado
 
-1. **Natura 2000** — «arde dentro de un parque natural». Con el patrón de CORINE
+1. **Corregir `precision_m`** — es lo único que quedó abierto de la tarea de
+   precisión. Los valores siguen puestos a ojo —500 m para JCyL, 100 m para el
+   112— y **dibujan el radio del círculo de cada incendio**. No se corrigieron
+   por falta de datos, no por olvido: el 04-08, de 11 incendios oficiales activos
+   solo **1** tenía un foco a menos de 3 km. De 19 partes de JCyL, 15 ya estaban
+   controlados o extinguidos y no emiten calor detectable. Con una pareja no se
+   mide nada, y ajustarlo a ojo otra vez sería repetir el error.
+
+   Se desbloquea solo: cada ejecución deja una línea `SEPARACION` en el log de
+   Actions, que dura 90 días. En una semana habrá serie:
+
+   ```bash
+   gh run view <id> --log | grep SEPARACION
+   ```
+
+   Primer dato real en producción: el 112 valenciano, **456 m** frente a los 100
+   declarados. El panel de fuentes ya enseña los dos números juntos.
+
+2. **Carreteras cerca de incendios** — sobre los cortes de la DGT que ya
+   ingerimos. **Sin rutas de evacuación**: eso es decisión operativa y no lo
+   somos.
+3. **Natura 2000** — «arde dentro de un parque natural». Con el patrón de CORINE
    ya montado es directo: mismo tipo de servicio, misma forma de consulta.
-2. **Páginas SEO por incendio** — ahora tienen nombre, estado y nivel, así que ya
+4. **Páginas SEO por incendio** — ahora tienen nombre, estado y nivel, así que ya
    tiene sentido. Quien busca «incendio Villafranca del Bierzo» no llega hoy.
-3. **Alertas por correo** por zona.
-4. **Histórico largo** — 13 KB/día, ~5 MB al año: git aguanta y R2 no es urgente.
+5. **Alertas por correo** por zona. Es la única de la lista que **rompe** la
+   arquitectura estática en vez de estirarla: necesita servidor, almacenamiento
+   y RGPD. Merece su propia decisión, no colarla en un bloque.
 
 ### Descartado en firme
 
