@@ -757,3 +757,83 @@ export function pintarActivos(
     },
   });
 }
+
+// --- Infraestructura crítica ------------------------------------------------
+
+export const FUENTE_ELECTRICAS = 'electricas';
+export const CAPA_ELECTRICAS = 'electricas-linea';
+export const FUENTE_FERROCARRIL = 'ferrocarril';
+export const CAPA_FERROCARRIL = 'ferrocarril-linea';
+
+/**
+ * Líneas eléctricas de alta tensión (≥110 kV) desde OpenStreetMap.
+ *
+ * Para qué: un fuego bajo una línea de 400 kV no es lo mismo que uno en mitad
+ * del monte. La red de transporte es la que provoca cortes de suministro y la
+ * que obliga a maniobrar.
+ *
+ * Solo alta tensión: los 15 kV de distribución son decenas de miles de tramos
+ * que llenarían el mapa de ruido sin añadir información.
+ *
+ * Va **por debajo** de los incendios porque es contexto, no el dato principal.
+ */
+export function anadirCapaElectricas(mapa: MapaGL): void {
+  mapa.addLayer(
+    {
+      id: CAPA_ELECTRICAS,
+      type: 'line',
+      source: FUENTE_ELECTRICAS,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      // Se revela por zoom, y no es cosmética: con las 8.584 líneas pintadas a
+      // la vez, a escala nacional la red tapa los incendios, que son el dato
+      // principal. De lejos solo la troncal de 400 kV, que ya dibuja el país;
+      // el detalle aparece cuando te acercas a mirar una zona concreta.
+      filter: [
+        'any',
+        ['>=', ['get', 'kv'], 400],
+        ['all', ['>=', ['zoom'], 7.5], ['>=', ['get', 'kv'], 220]],
+        ['>=', ['zoom'], 9],
+      ],
+      paint: {
+        // El grosor distingue transporte de reparto sin necesidad de leyenda:
+        // 400 kV se ve más gruesa que 132 kV, que es como se lee un mapa de red.
+        'line-width': [
+          'interpolate', ['linear'], ['zoom'],
+          6, ['case', ['>=', ['get', 'kv'], 400], 1.4, ['>=', ['get', 'kv'], 220], 1, 0.6],
+          12, ['case', ['>=', ['get', 'kv'], 400], 3.2, ['>=', ['get', 'kv'], 220], 2.2, 1.4],
+        ],
+        'line-color': [
+          'case',
+          ['>=', ['get', 'kv'], 400], '#e8a33d',
+          ['>=', ['get', 'kv'], 220], '#d98b2b',
+          '#a8701f',
+        ],
+        // Más tenue de lejos: la red es contexto y no debe competir con los
+        // círculos de incendio.
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.45, 9, 0.8],
+      },
+    },
+    CAPA_INCERTIDUMBRE,
+  );
+}
+
+/** Ferrocarril convencional y de vía estrecha. Sin apartaderos ni servicio. */
+export function anadirCapaFerrocarril(mapa: MapaGL): void {
+  mapa.addLayer(
+    {
+      id: CAPA_FERROCARRIL,
+      type: 'line',
+      source: FUENTE_FERROCARRIL,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.6, 12, 2],
+        'line-color': '#9aa7b8',
+        'line-opacity': 0.7,
+        // Discontinua: es como se dibuja una vía en cualquier mapa y evita
+        // confundirla con una línea eléctrica a poco zoom.
+        'line-dasharray': [3, 2],
+      },
+    },
+    CAPA_INCERTIDUMBRE,
+  );
+}

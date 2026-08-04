@@ -40,6 +40,25 @@ async function pedirJson<T>(ruta: string, revalidar = false): Promise<T> {
 }
 
 /**
+ * Recursos estáticos preparados por un script y versionados en el repositorio.
+ *
+ * Van en la raíz del sitio y no en `live/` porque no los publica el pipeline:
+ * el índice de núcleos y la infraestructura se generan una vez y cambian cuando
+ * alguien ejecuta su script, no cada media hora. Mezclarlos con los datos
+ * publicados haría que una publicación fallida pareciera borrarlos.
+ */
+export async function cargarEstatico<T>(nombre: string): Promise<T | null> {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  try {
+    const respuesta = await fetch(`${base}/${nombre}`);
+    if (!respuesta.ok) throw new ErrorDatos(nombre, `HTTP ${respuesta.status}`);
+    return (await respuesta.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * El manifiesto es el único recurso obligatorio: sin él no se puede afirmar
  * nada sobre la antigüedad de lo que se muestra, y mostrar incendios sin poder
  * decir de cuándo son es justo lo que RF-F-13 prohíbe.
