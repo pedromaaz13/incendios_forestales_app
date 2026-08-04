@@ -31,7 +31,16 @@ export interface Activo {
   lon: number;
 }
 
-/** Distancia por debajo de la cual un activo deja de considerarse lejano. */
+/**
+ * Distancias que puede elegir el usuario, en kilómetros.
+ *
+ * El umbral no puede ser uno solo: para una eléctrica con líneas de 40 km, 10
+ * es poco; para un camping, 2 ya es demasiado cerca. Elegirlo por todos sería
+ * decidir en su lugar qué le importa.
+ */
+export const DISTANCIAS_KM = [2, 5, 10, 25] as const;
+
+/** Valor por defecto. Ni alarmista ni inútil para el caso más común. */
 export const CERCA_KM = 10;
 
 /** Holgura del cono de sotavento, a cada lado de la dirección del viento. */
@@ -162,13 +171,28 @@ export function leerCSV(texto: string): Activo[] {
   }
   const iNombre = indiceDe(cabecera, COL_NOMBRE);
 
+  /**
+   * Celda a número, o `null`.
+   *
+   * El `null` explícito no es adorno: `Number('')` es **0**, y `0` es finito,
+   * así que una fila con la coordenada vacía se colaba como punto (0, 0) —el
+   * golfo de Guinea— en vez de descartarse. Aparecía en el mapa como un activo
+   * perfectamente normal.
+   */
+  const aNumero = (celda: string | undefined): number | null => {
+    // Coma decimal, otra vez por Excel en español.
+    const texto = String(celda ?? '').trim().replace(',', '.');
+    if (!texto) return null;
+    const n = Number(texto);
+    return Number.isFinite(n) ? n : null;
+  };
+
   const activos: Activo[] = [];
   for (const [n, linea] of lineas.slice(1).entries()) {
     const campos = linea.split(separador);
-    // Coma decimal, otra vez por Excel en español.
-    const lat = Number(String(campos[iLat] ?? '').trim().replace(',', '.'));
-    const lon = Number(String(campos[iLon] ?? '').trim().replace(',', '.'));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const lat = aNumero(campos[iLat]);
+    const lon = aNumero(campos[iLon]);
+    if (lat === null || lon === null) continue;
     activos.push({
       nombre: (campos[iNombre] ?? '').trim() || `Punto ${n + 1}`,
       lat,
@@ -233,11 +257,61 @@ export function leerFichero(nombre: string, texto: string): Activo[] {
   return nombre.toLowerCase().endsWith('.csv') ? leerCSV(texto) : leerGeoJSON(texto);
 }
 
+// --- Persistencia -----------------------------------------------------------
+
+const CLAVE_ACTIVOS = 'incendios-es:activos';
+const CLAVE_DISTANCIA = 'incendios-es:activos-distancia';
+
+/**
+ * Los activos sobreviven a recargar la página.
+ *
+ * `localStorage` sigue cumpliendo la promesa —no sale del navegador, no hay
+ * servidor de por medio— y quita la fricción que más mata el uso recurrente:
+ * volver a subir el mismo fichero cada mañana. El botón de quitar los borra de
+ * verdad, que es lo que hace que la promesa siga siendo cierta.
+ */
+export function guardar(activos: Activo[] | null, distanciaKm: number): void {
+  try {
+    if (activos) localStorage.setItem(CLAVE_ACTIVOS, JSON.stringify(activos));
+    else localStorage.removeItem(CLAVE_ACTIVOS);
+    localStorage.setItem(CLAVE_DISTANCIA, String(distanciaKm));
+  } catch {
+    // Modo privado o cuota llena: no poder recordar no es motivo para romper.
+  }
+}
+
+export function recuperar(): { activos: Activo[] | null; distanciaKm: number } {
+  let activos: Activo[] | null = null;
+  let distanciaKm = CERCA_KM;
+  try {
+    const crudo = localStorage.getItem(CLAVE_ACTIVOS);
+    if (crudo) {
+      const leidos = JSON.parse(crudo);
+      // Se revalida en vez de confiar: el almacenamiento lo puede haber escrito
+      // una versión anterior con otra forma.
+      if (Array.isArray(leidos)) {
+        const validos = leidos.filter(
+          (a) => a && typeof a.nombre === 'string' &&
+            Number.isFinite(a.lat) && Number.isFinite(a.lon),
+        );
+        if (validos.length) activos = validos as Activo[];
+      }
+    }
+    const d = Number(localStorage.getItem(CLAVE_DISTANCIA));
+    if (DISTANCIAS_KM.includes(d as (typeof DISTANCIAS_KM)[number])) distanciaKm = d;
+  } catch {
+    // Un almacenamiento corrupto no puede impedir usar el visor.
+  }
+  return { activos, distanciaKm };
+}
+
 // --- Interfaz ---------------------------------------------------------------
 
 export interface OpcionesActivos {
   /** Se llama al cargar, vaciar o recalcular. `null` cuando ya no hay activos. */
   alCambiar: (activos: Activo[] | null) => void;
+  /** Cambio del umbral de cercanía. */
+  alCambiarDistancia: (km: number) => void;
   /** Centrar el mapa en un activo al pulsarlo en la lista. */
   alElegir: (activo: Activo) => void;
 }
@@ -260,6 +334,14 @@ export function construirActivos(nodo: HTMLElement, opciones: OpcionesActivos): 
       El fichero <b>no sale de tu navegador</b>. No se sube a ningún servidor ni
       se guarda en ninguna parte.
     </p>
+    <div class="activos__distancia">
+      <label for="activos-km">Considerar «cerca» a menos de</label>
+      <select id="activos-km" class="activos__select">
+        ${DISTANCIAS_KM.map(
+          (km) => `<option value="${km}"${km === CERCA_KM ? ' selected' : ''}>${km} km</option>`,
+        ).join('')}
+      </select>
+    </div>
     <p class="activos__error" id="activos-error" role="alert" hidden></p>
     <div class="activos__resultado" id="activos-resultado" hidden></div>
     <button type="button" class="activos__quitar" id="activos-quitar" hidden>
@@ -270,6 +352,20 @@ export function construirActivos(nodo: HTMLElement, opciones: OpcionesActivos): 
   const zona = nodo.querySelector<HTMLLabelElement>('.activos__soltar')!;
   const error = nodo.querySelector<HTMLParagraphElement>('#activos-error')!;
   const quitar = nodo.querySelector<HTMLButtonElement>('#activos-quitar')!;
+  const selectorKm = nodo.querySelector<HTMLSelectElement>('#activos-km')!;
+
+  // Se restaura lo guardado antes de enganchar nada: así el usuario encuentra
+  // sus activos donde los dejó en vez de tener que volver a subir el fichero.
+  const recordado = recuperar();
+  selectorKm.value = String(recordado.distanciaKm);
+  if (recordado.activos) {
+    quitar.hidden = false;
+    opciones.alCambiar(recordado.activos);
+  }
+
+  selectorKm.addEventListener('change', () => {
+    opciones.alCambiarDistancia(Number(selectorKm.value));
+  });
 
   const fallar = (mensaje: string) => {
     error.hidden = false;
@@ -328,9 +424,9 @@ export function construirActivos(nodo: HTMLElement, opciones: OpcionesActivos): 
   });
 }
 
-function etiqueta(e: Exposicion): { texto: string; clase: string } {
+function etiqueta(e: Exposicion, cercaKm: number): { texto: string; clase: string } {
   if (e.distanciaKm === null) return { texto: 'sin incendios publicados', clase: 'nada' };
-  if (e.distanciaKm > CERCA_KM) return { texto: 'sin incendios cerca', clase: 'nada' };
+  if (e.distanciaKm > cercaKm) return { texto: 'sin incendios cerca', clase: 'nada' };
   // El nulo se dice, no se esconde: «no sabemos hacia dónde sopla» no es «no
   // sopla hacia ti».
   if (e.aSotavento === null) return { texto: 'cerca · viento sin dato', clase: 'duda' };
@@ -338,7 +434,7 @@ function etiqueta(e: Exposicion): { texto: string; clase: string } {
   return { texto: 'cerca, viento en contra', clase: 'media' };
 }
 
-export function pintarExposicion(exposiciones: Exposicion[]): void {
+export function pintarExposicion(exposiciones: Exposicion[], cercaKm = CERCA_KM): void {
   const nodo = document.getElementById('activos-resultado');
   if (!nodo) return;
 
@@ -347,21 +443,21 @@ export function pintarExposicion(exposiciones: Exposicion[]): void {
     return;
   }
 
-  const cerca = exposiciones.filter((e) => e.distanciaKm !== null && e.distanciaKm <= CERCA_KM);
+  const cerca = exposiciones.filter((e) => e.distanciaKm !== null && e.distanciaKm <= cercaKm);
   nodo.hidden = false;
   nodo.innerHTML = `
     <p class="activos__recuento">
       ${
         cerca.length
-          ? `<b>${cerca.length}</b> de ${exposiciones.length} a menos de ${CERCA_KM} km de un incendio.`
-          : `Ninguno de tus ${exposiciones.length} puntos tiene un incendio a menos de ${CERCA_KM} km.`
+          ? `<b>${cerca.length}</b> de ${exposiciones.length} a menos de ${cercaKm} km de un incendio.`
+          : `Ninguno de tus ${exposiciones.length} puntos tiene un incendio a menos de ${cercaKm} km.`
       }
     </p>
     <ul class="activos__lista">
       ${exposiciones
         .slice(0, 50)
         .map((e) => {
-          const { texto, clase } = etiqueta(e);
+          const { texto, clase } = etiqueta(e, cercaKm);
           const dist =
             e.distanciaKm === null
               ? ''

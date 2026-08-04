@@ -64,6 +64,7 @@ import {
   type Exposicion,
   calcularExposicion,
   construirActivos,
+  guardar,
   pintarExposicion,
 } from './ui/activos';
 import { abrirFicha, cerrarFicha, registrarFocos } from './ui/ficha';
@@ -107,6 +108,8 @@ interface Estado {
   cruce: Cruce | null;
   /** Puntos que ha subido el usuario. Nunca salen del navegador. */
   activos: Activo[] | null;
+  /** Umbral de cercanía elegido, en kilómetros. */
+  activosCercaKm: number;
 }
 
 const estado: Estado = {
@@ -124,6 +127,7 @@ const estado: Estado = {
   diaElegido: null,
   cruce: null,
   activos: null,
+  activosCercaKm: CERCA_KM,
 };
 
 /**
@@ -250,6 +254,12 @@ async function arrancar(): Promise<void> {
   construirActivos(document.getElementById('activos')!, {
     alCambiar: (activos) => {
       estado.activos = activos;
+      guardar(activos, estado.activosCercaKm);
+      refrescarActivos();
+    },
+    alCambiarDistancia: (km) => {
+      estado.activosCercaKm = km;
+      guardar(estado.activos, km);
       refrescarActivos();
     },
     alElegir: (activo) => {
@@ -604,7 +614,7 @@ function resaltar(id: string | null): void {
 
 /** Traduce la exposición al nivel de color que entiende la capa del mapa. */
 function nivelDe(e: Exposicion): string {
-  if (e.distanciaKm === null || e.distanciaKm > CERCA_KM) return 'lejos';
+  if (e.distanciaKm === null || e.distanciaKm > estado.activosCercaKm) return 'lejos';
   if (e.aSotavento === null) return 'duda';
   return e.aSotavento ? 'alta' : 'media';
 }
@@ -638,7 +648,7 @@ function refrescarActivos(): void {
     estado.activos,
     estado.incidentes?.features ?? [],
   );
-  pintarExposicion(exposiciones);
+  pintarExposicion(exposiciones, estado.activosCercaKm);
   pintarActivosEnMapa(exposiciones);
 }
 
