@@ -33,7 +33,7 @@ test('se descargan y se pintan al activarlas', async ({ page }) => {
       async () =>
         page.evaluate(() =>
           Boolean(
-            (window as never as { __mapa?: maplibregl.Map }).__mapa?.getLayer('electricas-linea'),
+            (window as never as { __mapa?: maplibregl.Map }).__mapa?.getLayer('electricas-troncal'),
           ),
         ),
       { timeout: 20000 },
@@ -56,27 +56,29 @@ test('a escala nacional solo se ve la red troncal', async ({ page }) => {
   await abrir(page);
   await page.click('[data-capa="electricas"]');
 
-  const visibles = await expect
+  // Se espera a que la troncal esté pintada, no solo a que la capa exista:
+  // montar la fuente y renderizar las teselas son momentos distintos, y en CI
+  // el segundo llega más tarde que en local.
+  await expect
     .poll(
       async () =>
         page.evaluate(() => {
           const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
-          if (!m?.getLayer('electricas-linea')) return -1;
-          return m.queryRenderedFeatures({ layers: ['electricas-linea'] }).length;
+          if (!m?.getLayer('electricas-troncal')) return 0;
+          return m.queryRenderedFeatures({ layers: ['electricas-troncal'] }).length;
         }),
-      { timeout: 20000 },
+      { timeout: 25000 },
     )
-    .not.toBe(-1)
-    .then(() =>
-      page.evaluate(() => {
-        const m = (window as never as { __mapa?: maplibregl.Map }).__mapa!;
-        const f = m.queryRenderedFeatures({ layers: ['electricas-linea'] });
-        return f.map((x) => Number(x.properties?.kv ?? 0));
-      }),
-    );
+    .toBeGreaterThan(0);
 
-  // Con las 8.584 líneas pintadas a la vez, la red tapa los incendios —que son
-  // el dato principal—. De lejos solo debe verse la troncal.
-  expect(visibles.length).toBeGreaterThan(0);
-  expect(Math.min(...visibles), 'a zoom nacional no deben salir los 132 kV').toBeGreaterThanOrEqual(400);
+  // El resto de la red tiene minzoom 7.5: a escala nacional (z5.1) no puede
+  // haber nada pintado, o la red taparía los incendios.
+  const resto = await page.evaluate(() => {
+    const m = (window as never as { __mapa?: maplibregl.Map }).__mapa!;
+    return m.getLayer('electricas-resto')
+      ? m.queryRenderedFeatures({ layers: ['electricas-resto'] }).length
+      : -1;
+  });
+  expect(resto, 'la capa de resto debe existir').not.toBe(-1);
+  expect(resto, 'a z5 no deben pintarse los 132 kV').toBe(0);
 });

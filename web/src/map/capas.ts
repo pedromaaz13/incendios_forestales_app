@@ -761,7 +761,8 @@ export function pintarActivos(
 // --- Infraestructura crítica ------------------------------------------------
 
 export const FUENTE_ELECTRICAS = 'electricas';
-export const CAPA_ELECTRICAS = 'electricas-linea';
+export const CAPA_ELECTRICAS = 'electricas-troncal';
+export const CAPA_ELECTRICAS_RESTO = 'electricas-resto';
 export const FUENTE_FERROCARRIL = 'ferrocarril';
 export const CAPA_FERROCARRIL = 'ferrocarril-linea';
 
@@ -778,39 +779,49 @@ export const CAPA_FERROCARRIL = 'ferrocarril-linea';
  * Va **por debajo** de los incendios porque es contexto, no el dato principal.
  */
 export function anadirCapaElectricas(mapa: MapaGL): void {
+  // Dos capas y no una con `['zoom']` dentro de `filter`: ese filtro se evalúa
+  // **por tesela** y no por el zoom de pantalla, así que los 132 kV se colaban
+  // a escala nacional 1 de cada 3 ejecuciones. `minzoom` es propiedad de capa y
+  // sí es determinista.
   mapa.addLayer(
     {
       id: CAPA_ELECTRICAS,
       type: 'line',
       source: FUENTE_ELECTRICAS,
+      filter: ['>=', ['get', 'kv'], 400],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      // Se revela por zoom, y no es cosmética: con las 8.584 líneas pintadas a
-      // la vez, a escala nacional la red tapa los incendios, que son el dato
-      // principal. De lejos solo la troncal de 400 kV, que ya dibuja el país;
-      // el detalle aparece cuando te acercas a mirar una zona concreta.
-      filter: [
-        'any',
-        ['>=', ['get', 'kv'], 400],
-        ['all', ['>=', ['zoom'], 7.5], ['>=', ['get', 'kv'], 220]],
-        ['>=', ['zoom'], 9],
-      ],
       paint: {
-        // El grosor distingue transporte de reparto sin necesidad de leyenda:
-        // 400 kV se ve más gruesa que 132 kV, que es como se lee un mapa de red.
-        'line-width': [
-          'interpolate', ['linear'], ['zoom'],
-          6, ['case', ['>=', ['get', 'kv'], 400], 1.4, ['>=', ['get', 'kv'], 220], 1, 0.6],
-          12, ['case', ['>=', ['get', 'kv'], 400], 3.2, ['>=', ['get', 'kv'], 220], 2.2, 1.4],
-        ],
-        'line-color': [
-          'case',
-          ['>=', ['get', 'kv'], 400], '#e8a33d',
-          ['>=', ['get', 'kv'], 220], '#d98b2b',
-          '#a8701f',
-        ],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.4, 12, 3.2],
+        'line-color': '#e8a33d',
         // Más tenue de lejos: la red es contexto y no debe competir con los
         // círculos de incendio.
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.45, 9, 0.8],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 0.85],
+      },
+    },
+    CAPA_INCERTIDUMBRE,
+  );
+
+  // El resto solo al acercarse: con las 8.584 líneas a la vez, a escala
+  // nacional la red tapa los incendios, que son el dato principal.
+  mapa.addLayer(
+    {
+      id: CAPA_ELECTRICAS_RESTO,
+      type: 'line',
+      source: FUENTE_ELECTRICAS,
+      minzoom: 7.5,
+      filter: ['<', ['get', 'kv'], 400],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        // La interpolación por zoom va **fuera** del `case`: MapLibre no admite
+        // `['zoom']` anidado dentro de otra expresión y `addLayer` falla en
+        // silencio, dejando la capa sin montar sin dar ningún error.
+        'line-width': [
+          'interpolate', ['linear'], ['zoom'],
+          6, ['case', ['>=', ['get', 'kv'], 220], 1, 0.6],
+          12, ['case', ['>=', ['get', 'kv'], 220], 2.2, 1.4],
+        ],
+        'line-color': ['case', ['>=', ['get', 'kv'], 220], '#d98b2b', '#a8701f'],
+        'line-opacity': 0.7,
       },
     },
     CAPA_INCERTIDUMBRE,

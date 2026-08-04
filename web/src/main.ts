@@ -59,6 +59,7 @@ import {
   anadirCapaElectricas,
   anadirCapaFerrocarril,
   CAPA_ELECTRICAS,
+  CAPA_ELECTRICAS_RESTO,
   CAPA_FERROCARRIL,} from './map/capas';
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
@@ -552,7 +553,7 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     trafico: [CAPA_TRAFICO, CAPA_TRAFICO_INCENDIO],
     avisos: [CAPA_AVISOS, CAPA_AVISOS_BORDE],
     suelo: [CAPA_SUELO],
-    electricas: [CAPA_ELECTRICAS],
+    electricas: [CAPA_ELECTRICAS, CAPA_ELECTRICAS_RESTO],
     ferrocarril: [CAPA_FERROCARRIL],
   };
 
