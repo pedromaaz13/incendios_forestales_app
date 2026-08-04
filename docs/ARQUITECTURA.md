@@ -137,7 +137,7 @@ flowchart TD
     end
 
     M --> ui
-    M --> CAP["map/capas.ts<br/><i>20 capas MapLibre</i>"]
+    M --> CAP["map/capas.ts<br/><i>21 capas MapLibre</i>"]
     CAP -.->|"bajo demanda"| dif
 ```
 
@@ -150,28 +150,39 @@ hasta que la carga inicial se ha doblado.
 argumento de venta, no solo higiene — y hay una prueba que falla si aparece
 cualquier `POST`.
 
+**Cinco mapas base**, y el defecto es «Sobrio» (CARTO, sin clave de API) por una
+razón de lectura y no de gusto: sobre OSM estándar el naranja significa a la vez
+carretera principal, línea de alta tensión e intensidad térmica alta, y con las
+capas de infraestructura encendidas no se distinguía una línea de 400 kV de una
+autovía. Con un fondo gris, el color queda para el dato. La regla que ordena la
+paleta es **cálido = fuego, frío = todo lo demás**.
+
+**En móvil el panel es un cajón.** Por debajo de 860 px sale de la izquierda con
+su botón, velo y cierre por `Escape`. No es el caso secundario: quien busca
+«incendio cerca de mi pueblo» lo hace desde el teléfono.
+
 ---
 
 ## 4 · Las pruebas
 
-Tres capas, cada una para un tipo de fallo distinto. **648 pruebas.**
+Tres capas, cada una para un tipo de fallo distinto. **669 pruebas.**
 
 ```mermaid
 flowchart LR
     V["Vitest · 33<br/><b>~300 ms</b><br/><i>la aritmética</i>"]
-    P["pytest · 508<br/><b>~1,8 min</b><br/><i>el pipeline</i>"]
-    E["Playwright · 107<br/><b>~4,5 min</b><br/><i>no inducir a error</i>"]
+    P["pytest · 516<br/><b>~1,8 min</b><br/><i>el pipeline</i>"]
+    E["Playwright · 120<br/><b>~4,5 min</b><br/><i>no inducir a error</i>"]
     V --> P --> E
 ```
 
 | Capa | Nº | Ficheros | Qué caza que las otras no |
 |---|---:|---:|---|
 | **Vitest** | 33 | 2 | Rumbos, distancias, lectura de CSV. El número plausible y equivocado |
-| **pytest** | 508 | 23 | Fusión, invariantes, adaptadores, salud de fuentes. Cobertura ≥ 85 % (hoy **94,12 %**) |
-| **Playwright** | 107 | 4 | Que la interfaz no engañe: latencias sin mezclar, aviso del 112, estado degradado |
+| **pytest** | 516 | 23 | Fusión, invariantes, adaptadores, salud de fuentes. Cobertura ≥ 85 % (hoy **94,19 %**) |
+| **Playwright** | 120 | 5 | Que la interfaz no engañe: latencias sin mezclar, aviso del 112, estado degradado |
 
 **Por qué las tres.** El bug del punto (0, 0) —una coordenada vacía que se
-colaba como el golfo de Guinea— **pasó los 107 escenarios de Playwright sin
+colaba como el golfo de Guinea— **pasó los 107 escenarios de Playwright que había entonces sin
 despeinarse**, porque a través de la interfaz solo se ve la etiqueta final, no
 el ángulo que la produjo. Lo cazó Vitest en su primera ejecución.
 
