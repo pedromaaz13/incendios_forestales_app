@@ -158,7 +158,24 @@ def construir_hotspots() -> pd.DataFrame:
         bloque("SEVIRI Sierra de Gata", 40.251, -6.601, 4, 0.02, 40.0, [0.25],
                instrument="SEVIRI", source="SEVIRI_FRP_PIXEL")
     )
-    return pd.concat(bloques, ignore_index=True)
+    focos = pd.concat(bloques, ignore_index=True)
+
+    # La demo tiene que llegar siempre al día en curso.
+    #
+    # Todas las detecciones se fechan restando horas a NOW, y la más fresca está
+    # a 15 minutos. En los primeros 15 minutos de un día UTC eso cae en el día
+    # anterior: ningún día coincide con «hoy», el evolutivo se queda sin barra
+    # parcial y el E2E falla. Ocurrió el 04-08-2026 a las 00:12 UTC.
+    #
+    # No es un apaño del test: un sistema real que lleva media hora sin ninguna
+    # detección del día en curso no existe —los polares pasan varias veces y
+    # SEVIRI cada 15 minutos—, así que la demo estaba representando un estado
+    # imposible.
+    inicio_del_dia = NOW.normalize()
+    if focos["acq_dt"].max() < inicio_del_dia:
+        focos.loc[focos["acq_dt"].idxmax(), "acq_dt"] = inicio_del_dia + pd.Timedelta(minutes=1)
+
+    return focos
 
 
 def construir_oficiales() -> pd.DataFrame:
