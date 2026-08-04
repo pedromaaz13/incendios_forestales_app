@@ -230,6 +230,34 @@ ya lo excluye.
 | `ies-ows.jrc.ec.europa.eu/effis` (WFS) | ⚠️ Anuncia las capas buenas —`ercc.ba` áreas quemadas, `fwi_nuts5.fwi` índice de riesgo, `ercc.hs_24hrs_point`— pero **su backend Oracle está caído**: `msOracleSpatialLayerOpen(): Connection failure`. Reintentar |
 | `maps.effis.emergency.copernicus.eu` | ❌ No resuelve |
 | `www.ign.es/wfs-inspire/unidades-administrativas` | Sustituido: la capa municipal se prepara desde la descarga GML del CNIG |
+| `image.discomap.eea.europa.eu/.../Natura2000/N2K_2018` | ❌ **Descartada por cobertura incompleta.** Ver abajo |
+| `wms.mapama.gob.es/sig/Biodiversidad/RedNatura` | ❌ Su servidor devuelve `System.NullReferenceException` tanto en WMS como en WFS. Comprobado el 05-08-2026 |
+
+### Natura 2000: por qué se descartó la capa de la EEA · 05/08/2026
+
+El servicio existe, es público, soporta `Query` por coordenada y responde
+rápido — igual que CORINE. Parecía directo. **No lo es.**
+
+Sondeados trece puntos de espacios que sí son Red Natura 2000:
+
+| Tipo de espacio | Dentro |
+|---|---:|
+| Monte y bosque — Picos de Europa, Gredos, Monfragüe, Sierra Nevada, Cazorla, Ordesa, Doñana | **7 / 7** |
+| Humedales — Delta del Ebro (3 puntos), Tablas de Daimiel, Albufera de Valencia | **0 / 5** |
+
+`N2K_2018` no es la capa de límites de los espacios: es el **mapa de hábitats
+terrestres** dentro de algunos de ellos. Los humedales no están.
+
+Usarla habría publicado «no está en espacio protegido» de un incendio en la
+Albufera. Un falso negativo silencioso, del tipo exacto que este proyecto existe
+para no cometer: no da error, no lo nota nadie, y afirma lo contrario de la
+realidad.
+
+**Qué haría falta** para hacer esta capa bien: los límites oficiales de la Red
+Natura 2000 con su nombre y código de espacio. Los publica MITECO, cuyo servidor
+está roto, y la EEA en su portal de descargas —no como API consultable—, así que
+tocaría el patrón de `preparar_nucleos.py`: descargar una vez, recortar a España
+y servir estático.
 
 ### Lo que esto significa
 

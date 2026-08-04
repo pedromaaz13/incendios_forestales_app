@@ -442,8 +442,12 @@ administraciones públicas, localizables con DevTools en diez minutos.
 2. **Carreteras cerca de incendios** — sobre los cortes de la DGT que ya
    ingerimos. **Sin rutas de evacuación**: eso es decisión operativa y no lo
    somos.
-3. **Natura 2000** — «arde dentro de un parque natural». Con el patrón de CORINE
-   ya montado es directo: mismo tipo de servicio, misma forma de consulta.
+3. **Natura 2000** — «arde dentro de un parque natural». **Bloqueado por la
+   fuente, no por el trabajo.** La capa de la EEA parecía directa —mismo servicio
+   que CORINE, consulta por punto— pero sondeada el 05-08 con trece puntos
+   resultó cubrir solo hábitats terrestres: 7 de 7 en monte, **0 de 5 en
+   humedales**. Habría publicado «no está en espacio protegido» de un incendio en
+   la Albufera. El detalle y qué haría falta, en `COMO-CONECTAR-LAS-FUENTES.md`.
 4. **Páginas SEO por incendio** — ahora tienen nombre, estado y nivel, así que ya
    tiene sentido. Quien busca «incendio Villafranca del Bierzo» no llega hoy.
 5. **Alertas por correo** por zona. Es la única de la lista que **rompe** la
