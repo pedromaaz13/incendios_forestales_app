@@ -166,7 +166,21 @@ export interface Fuente {
   age_seconds: number | null;
   ttl_seconds: number;
   records: number;
+  /** Margen de posición que **declara** la fuente. Alimenta el radio del
+   *  círculo que se pinta, y hoy sigue siendo un valor puesto a ojo. */
   precision_m: number | null;
+  /** Cuántos partes casaron con una detección satelital en esta ejecución, y
+   *  la mediana de lo que se separan.
+   *
+   *  Es lo que permitirá **medir** `precision_m` en vez de declararlo: el
+   *  pipeline calculaba la distancia y la tiraba. Una sola ejecución no basta
+   *  —los partes cubren fuegos que el satélite no ve y viceversa—, así que se
+   *  publica en cada una para que la medición se acumule.
+   *
+   *  No es la precisión de la fuente: es el error combinado con el del
+   *  satélite, o sea una cota superior. De ahí «separación». */
+  emparejados: number | null;
+  separacion_mediana_m: number | null;
   error: string | null;
   consecutive_failures: number;
   attribution: string;
