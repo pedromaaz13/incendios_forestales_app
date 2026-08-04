@@ -1,6 +1,6 @@
 # Estado del proyecto
 
-Foto del 4 de agosto de 2026. Se actualiza al cerrar cada hito.
+Foto del 5 de agosto de 2026. Se actualiza al cerrar cada hito.
 
 Todo lo que dice este documento está comprobado contra el repositorio o contra
 la URL de producción en la fecha de arriba. Donde no hay comprobación posible,
@@ -70,6 +70,7 @@ Cada incidente publica, además de su posición e intensidad:
 | `viento_*` · `temp_c` · `humedad_pct` | Condiciones observadas ahí | Open-Meteo, interpolado |
 | `aviso_*` | Aviso de AEMET vigente sobre la comarca | AEMET Meteoalerta |
 | `cortes_cerca` · `_por_incendio` | Accesos cortados a menos de 15 km | DGT |
+| `cortes_vias` | **Qué** vías, con su punto kilométrico. Las declaradas por incendio primero | DGT |
 | `focos_recientes` · `crecimiento_ha_h` | Superficie nueva ya detectada en 6 h | FIRMS |
 | `ultima_observacion_h` | Cuánto hace que se vio calor ahí | FIRMS |
 | `official_separacion_m` | Cuánto se separan el parte oficial y el centroide satelital | Derivado |
@@ -104,7 +105,7 @@ frontend enseña los dos números y nunca uno solo.
 | `validate.py` | Completo | Los 8 invariantes de 4.4 más el 9: ningún estado sin quien lo afirme |
 | `wind.py` | Completo | 230 nodos · viento, temperatura y humedad |
 | `aemet.py` | Completo | Avisos CAP 1.2 de Meteoalerta |
-| `contexto.py` | Completo | Viento, avisos, cortes, ritmo y distancia a población |
+| `contexto.py` | Completo | Viento, avisos, cortes **con nombre de vía**, ritmo y distancia a población |
 | `suelo.py` | Completo | Uso del suelo por incendio · CORINE 2018 |
 | `sources/jcyl.py` | Completo | INFORCYL · coordenadas UTM, medios, nivel INFOCAL |
 | `sources/cv112.py` | Completo | 112 CV · filtra incidencias que no son incendio |
@@ -119,7 +120,7 @@ frontend enseña los dos números y nunca uno solo.
 |---|---|
 | Mapa base y capas | Completo |
 | Agrupación numérica que se dispersa al hacer zoom | Completo |
-| Ficha de incendio | Completo · fuente, superficie, evolución, condiciones en la zona |
+| Ficha de incendio | Completo · fuente, superficie, evolución, condiciones y **qué vías están cortadas** |
 | Evolutivo diario global | Completo |
 | Evolutivo por incendio | Completo |
 | Filtros (período, confianza, origen, sensor) | Completo |
@@ -139,13 +140,13 @@ frontend enseña los dos números y nunca uno solo.
 
 ## 4 · Pruebas
 
-Tres capas, cada una para un tipo de fallo distinto. **669 pruebas.**
+Tres capas, cada una para un tipo de fallo distinto. **679 pruebas.**
 
 | Capa | Nº | Tarda | Qué caza que las otras no |
 |---|---:|---|---|
 | **Vitest** | 33 | ~300 ms | Rumbos, distancias, lectura de CSV |
-| **pytest** | 516 | ~1,8 min | Fusión, invariantes, adaptadores, salud. Cobertura **94,19 %** (mínimo 85 %) |
-| **Playwright** | 120 | ~4,5 min | Que la interfaz no engañe |
+| **pytest** | 524 | ~2,2 min | Fusión, invariantes, adaptadores, salud. Cobertura **94,30 %** (mínimo 85 %) |
+| **Playwright** | 122 | ~4,5 min | Que la interfaz no engañe |
 
 Vitest se añadió el 04-08 y **encontró un bug en su primera ejecución**:
 `Number('')` es `0` y `Number.isFinite(0)` es cierto, así que una fila de CSV con
@@ -264,6 +265,9 @@ pública, no solo en local:
 | #47 | **Mapa sobrio por defecto** y la infraestructura deja de competir con el fuego |
 | #48 | **El panel se puede abrir desde el móvil** |
 | #49 · #50 · #51 | La separación oficial ↔ satélite deja de tirarse, persiste y se ve |
+| #52 | Este documento, al día |
+| #53 | **Qué carreteras** están cortadas, no solo cuántas |
+| #54 | Natura 2000 descartada: la fuente miente por omisión |
 
 Tres fallos silenciosos salieron por el camino, y ninguno daba error:
 
@@ -276,6 +280,12 @@ Tres fallos silenciosos salieron por el camino, y ninguno daba error:
   montó.
 - **Una coordenada vacía se colaba como punto (0, 0)**, el golfo de Guinea. Lo
   cazó Vitest en su primera ejecución tras pasar 107 escenarios de Playwright.
+
+Y uno más el 05-08, al implementar los cortes con nombre de vía: con
+`groupby().apply()`, si **ningún** incendio tiene vías cerca pandas colapsa el
+resultado en un DataFrame vacío y la asignación revienta. Con datos normales no
+pasa, así que se habría colado hasta el primer día tranquilo. Lo cazó el test
+que existía justo para ese caso.
 
 ---
 
@@ -418,6 +428,15 @@ administraciones públicas, localizables con DevTools en diez minutos.
   cartografiados y el índice FWI oficial. `scripts/vigilar_effis.py` avisa.
 - **`bombers` e `infoca`**: la evidencia apunta a que no existe feed público en
   tiempo real. No son tareas pendientes, son fuentes que no hay.
+- **Natura 2000** · «arde dentro de un parque natural». No es trabajo pendiente,
+  es que **no hay fuente consultable**. La capa de la EEA parecía directa —mismo
+  servicio que CORINE, consulta por punto, respuesta rápida— y las tres primeras
+  pruebas cuadraron. Sondeada el 05-08 con trece puntos resultó ser el mapa de
+  hábitats **terrestres**, no los límites de los espacios: 7 de 7 en monte y
+  **0 de 5 en humedales**. Habría publicado «no está en espacio protegido» de un
+  incendio en la Albufera — un falso negativo silencioso. El WMS de MITECO, que
+  sí tiene los límites oficiales con nombre, devuelve `NullReferenceException`.
+  Coordenadas probadas y qué haría falta, en `COMO-CONECTAR-LAS-FUENTES.md`.
 
 ### Pendiente, no bloqueado
 
@@ -439,18 +458,9 @@ administraciones públicas, localizables con DevTools en diez minutos.
    Primer dato real en producción: el 112 valenciano, **456 m** frente a los 100
    declarados. El panel de fuentes ya enseña los dos números juntos.
 
-2. **Carreteras cerca de incendios** — sobre los cortes de la DGT que ya
-   ingerimos. **Sin rutas de evacuación**: eso es decisión operativa y no lo
-   somos.
-3. **Natura 2000** — «arde dentro de un parque natural». **Bloqueado por la
-   fuente, no por el trabajo.** La capa de la EEA parecía directa —mismo servicio
-   que CORINE, consulta por punto— pero sondeada el 05-08 con trece puntos
-   resultó cubrir solo hábitats terrestres: 7 de 7 en monte, **0 de 5 en
-   humedales**. Habría publicado «no está en espacio protegido» de un incendio en
-   la Albufera. El detalle y qué haría falta, en `COMO-CONECTAR-LAS-FUENTES.md`.
-4. **Páginas SEO por incendio** — ahora tienen nombre, estado y nivel, así que ya
+2. **Páginas SEO por incendio** — ahora tienen nombre, estado y nivel, así que ya
    tiene sentido. Quien busca «incendio Villafranca del Bierzo» no llega hoy.
-5. **Alertas por correo** por zona. Es la única de la lista que **rompe** la
+3. **Alertas por correo** por zona. Es la única de la lista que **rompe** la
    arquitectura estática en vez de estirarla: necesita servidor, almacenamiento
    y RGPD. Merece su propia decisión, no colarla en un bloque.
 
