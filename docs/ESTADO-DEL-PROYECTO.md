@@ -213,7 +213,27 @@ peligroso de este sistema.
 **no disponibles**, no por pendientes: no hay indicios de que exista un feed
 público en tiempo real de esas dos comunidades.
 
-### 5.4 · EFFIS caído
+### 5.4 · `precision_m` sigue declarado a ojo
+
+**Es lo que dibuja el radio del círculo** de cada incendio en el mapa, y está
+puesto a mano: 500 m para JCyL, 100 m para el 112 valenciano. Sus propios
+comentarios en `adapters.py` dicen «provisional hasta medirlo».
+
+El 04-08 se recuperó la medición que el pipeline calculaba y tiraba
+(`match_distance_m`), y ya se publica por incidente, agregada por fuente y
+visible en el panel. Primer dato real: el 112 declara 100 m y **mide 456 m**.
+
+No se ha corregido el valor porque **con una muestra de uno no se mide nada**.
+De 11 incendios oficiales activos, solo 1 tenía un foco a menos de 3 km: los
+partes cubren fuegos pequeños que VIIRS no ve y el satélite ve fuegos sin
+reportar. Cambiar el número ahora sería sustituir un valor inventado por otro.
+
+Se desbloquea con el tiempo: cada ejecución del cron deja una línea buscable en
+el log de Actions, que dura 90 días.
+
+    gh run view <id> --log | grep SEPARACION
+
+### 5.5 · EFFIS caído
 
 Lleva más de tres días respondiendo `msOracleSpatialLayerOpen(): Cannot create
 OCI Handlers`. Es un fallo de su servidor, no nuestro. `scripts/vigilar_effis.py`
