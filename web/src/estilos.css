@@ -1307,3 +1307,14 @@ body {
   .panel-boton[aria-expanded="true"] .panel-boton__icono::before { top: 0; transform: rotate(45deg); }
   .panel-boton[aria-expanded="true"] .panel-boton__icono::after { top: 0; transform: rotate(-45deg); }
 }
+
+/* Margen de posición de cada fuente: el declarado y, cuando lo hay, el medido.
+   Va en su propia línea y más tenue que el estado — es un dato de segundo
+   orden, pero es el que explica el radio del círculo del mapa. */
+.fuente__margen {
+  display: block;
+  margin-top: 2px;
+  font-size: .72rem;
+  color: var(--muted);
+}
+.fuente__margen b { color: var(--ink); font-weight: 600; }

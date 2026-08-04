@@ -1031,3 +1031,74 @@ test('cada cruce enseña qué combinación lo responde', async ({ page }) => {
   await expect(cruce.locator('.cruce__criterio')).toContainText('forestal');
   await expect(cruce.locator('.cruce__criterio')).toContainText('km/h');
 });
+
+// --- margen de posición por fuente ------------------------------------------
+//
+// `precision_m` es lo que dibuja el radio del círculo de cada incendio, y hasta
+// ahora no se enseñaba en ninguna parte: el visor decía «está en algún punto de
+// este círculo» sin decir de dónde salía el círculo. Los valores están puestos
+// a ojo y sus comentarios en `adapters.py` dicen «provisional hasta medirlo»,
+// así que al lado va lo que de verdad se separan el parte oficial y la
+// detección satelital.
+
+function _salud(extra: Record<string, unknown>) {
+  return {
+    generated_at: '2026-08-04T12:00:00Z',
+    sources: [
+      {
+        id: '112cv', name: '112 Comunitat Valenciana', region: 'CV', kind: 'oficial',
+        critical: false, status: 'ok', last_success_at: '2026-08-04T11:59:00Z',
+        age_seconds: 60, ttl_seconds: 300, records: 9, precision_m: 100,
+        error: null, consecutive_failures: 0, attribution: '',
+        ...extra,
+      },
+    ],
+  };
+}
+
+test('el panel enseña el margen declarado y el medido', async ({ page }) => {
+  await page.route('**/live/sources.json', (ruta) =>
+    ruta.fulfill({ json: _salud({ emparejados: 1, separacion_mediana_m: 456 }) }),
+  );
+  await abrir(page);
+
+  const fila = page.locator('.fuente', { hasText: '112 Comunitat Valenciana' });
+  // Los dos juntos: es lo que hace evidente que el círculo del mapa es
+  // optimista, sin que nadie tenga que abrir el JSON.
+  await expect(fila).toContainText('margen declarado 100 m');
+  await expect(fila).toContainText('medido 456 m');
+});
+
+test('el margen medido dice sobre cuántos partes se ha calculado', async ({ page }) => {
+  await page.route('**/live/sources.json', (ruta) =>
+    ruta.fulfill({ json: _salud({ emparejados: 1, separacion_mediana_m: 456 }) }),
+  );
+  await abrir(page);
+
+  // Un número medido sobre un solo parte no es una medición. Omitir la muestra
+  // invitaría a leerlo como si lo fuera.
+  await expect(page.locator('.fuente__margen')).toContainText('1 parte');
+});
+
+test('sin emparejamientos solo se enseña el declarado', async ({ page }) => {
+  await page.route('**/live/sources.json', (ruta) =>
+    ruta.fulfill({ json: _salud({ emparejados: 0, separacion_mediana_m: null }) }),
+  );
+  await abrir(page);
+
+  const margen = page.locator('.fuente__margen');
+  await expect(margen).toContainText('margen declarado 100 m');
+  // Inventar un «medido 0 m» diría que las dos observaciones coinciden
+  // exactamente, que es afirmar algo que no sabemos.
+  await expect(margen).not.toContainText('medido');
+});
+
+test('una fuente sin margen declarado no enseña la línea', async ({ page }) => {
+  await page.route('**/live/sources.json', (ruta) =>
+    ruta.fulfill({ json: _salud({ precision_m: null, emparejados: null,
+                                  separacion_mediana_m: null }) }),
+  );
+  await abrir(page);
+
+  await expect(page.locator('.fuente__margen')).toHaveCount(0);
+});

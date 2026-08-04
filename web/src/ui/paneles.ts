@@ -143,9 +143,47 @@ function filaFuente(f: Fuente): string {
           <span aria-hidden="true">${iconoEstadoFuente(f.status)}</span>
           ${etiquetaEstadoFuente(f.status)} · ${detalle}
         </span>
+        ${margen(f)}
       </span>
       <span class="fuente__meta">${f.status === 'ok' ? duracion(f.age_seconds) : ''}</span>
     </li>`;
+}
+
+/**
+ * Margen de posición declarado por la fuente y, si lo hay, el medido.
+ *
+ * Por qué se enseña. `precision_m` es lo que **dibuja el radio del círculo** de
+ * cada incendio en el mapa, y hasta ahora no aparecía en ninguna parte: le
+ * decíamos al usuario «está en algún punto de este círculo» sin decir de dónde
+ * salía el círculo.
+ *
+ * Y por qué se enseñan los dos juntos. Los valores declarados están puestos a
+ * ojo —500 m para JCyL, 100 m para el 112— y sus propios comentarios en
+ * `adapters.py` dicen «provisional hasta medirlo». Poner al lado lo que de
+ * verdad se separan el parte oficial y la detección satelital hace que la
+ * discrepancia se vea sola, en vez de quedarse en un comentario del código.
+ *
+ * Se dice **en cuántos partes** porque un número medido sobre uno solo no es
+ * una medición, y omitir la muestra invitaría a leerlo como si lo fuera.
+ */
+function margen(f: Fuente): string {
+  if (f.precision_m === null) return '';
+
+  const declarado = `margen declarado ${numero(f.precision_m)} m`;
+
+  // Nulo y cero son cosas distintas: `null` es «esta fuente no llega a la
+  // fusión», `0` es «llegó y ninguno de sus partes coincidió con un foco».
+  // Ninguno de los dos da una medida, pero solo el segundo dice algo.
+  if (!f.emparejados || f.separacion_mediana_m === null) {
+    return `<span class="fuente__margen">${declarado}</span>`;
+  }
+
+  const partes = f.emparejados === 1 ? '1 parte' : `${numero(f.emparejados)} partes`;
+  return `
+    <span class="fuente__margen">
+      ${declarado} ·
+      <b>medido ${numero(f.separacion_mediana_m)} m</b> en ${partes}
+    </span>`;
 }
 
 export function pintarResumen(manifiesto: Manifiesto | null): void {
