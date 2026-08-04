@@ -127,6 +127,10 @@ function bloqueContexto(p: PropiedadesIncidente): string {
   const cortes =
     p.cortes_cerca !== null && p.cortes_cerca > 0
       ? `<p class="ficha__dato"><span>Carreteras cortadas a menos de 15 km</span><b>${numero(p.cortes_cerca)}</b></p>${
+          // Cuáles, no solo cuántas: «2 cortes cerca» no responde a la pregunta
+          // de quien vive al lado. Los declarados por incendio van primero.
+          p.cortes_vias ? `<p class="ficha__nota ficha__vias">${p.cortes_vias}</p>` : ''
+        }${
           p.cortes_cerca_por_incendio
             ? `<p class="ficha__nota">${numero(p.cortes_cerca_por_incendio)} de ellas las declara la DGT causadas por incendio forestal.</p>`
             : ''

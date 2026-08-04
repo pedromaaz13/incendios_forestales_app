@@ -1318,3 +1318,11 @@ body {
   color: var(--muted);
 }
 .fuente__margen b { color: var(--ink); font-weight: 600; }
+
+/* Las vías cortadas van en su propia línea y en monoespaciado: son códigos
+   —N-630 pk 412— y en proporcional se leen peor de un vistazo. */
+.ficha__vias {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .74rem;
+  color: var(--ink);
+}
