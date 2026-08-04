@@ -50,7 +50,18 @@
     <div class="banda" id="banda" role="status" hidden></div>
 
     <main class="disposicion">
-      <aside class="panel panel--izq" aria-label="Estado de fuentes, resumen y capas">
+      <!-- Solo visible por debajo de 860 px. El panel es un cajón deslizante en
+           móvil y hasta ahora no había forma de abrirlo: el CSS ya contemplaba
+           `data-abierto` pero nadie lo ponía, así que buscador, filtros, capas
+           y activos eran inalcanzables desde el teléfono. -->
+      <button type="button" class="panel-boton" id="panel-boton"
+              aria-controls="panel-izq" aria-expanded="false">
+        <span class="panel-boton__icono" aria-hidden="true"></span>
+        <span class="panel-boton__texto">Panel</span>
+      </button>
+      <div class="panel-velo" id="panel-velo" hidden></div>
+
+      <aside class="panel panel--izq" id="panel-izq" aria-label="Estado de fuentes, resumen y capas">
         <!-- Lo primero del panel a propósito: quien llega asustado no viene a
              mirar el estado de las fuentes, viene a escribir el nombre de su
              pueblo. -->

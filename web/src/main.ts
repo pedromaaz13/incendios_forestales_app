@@ -71,6 +71,7 @@ import {
   pintarResultado,
 } from './ui/cruces';
 import { construirBuscador } from './ui/buscador';
+import { construirPanelMovil } from './ui/panel-movil';
 import {
   type Activo,
   CERCA_KM,
@@ -256,6 +257,7 @@ async function arrancar(): Promise<void> {
       refrescarLista();
     },
   });
+  construirPanelMovil();
   construirBuscador(document.getElementById('buscador')!, {
     alElegir: (nucleo) => {
       mapa.flyTo({

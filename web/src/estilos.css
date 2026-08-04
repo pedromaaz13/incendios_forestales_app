@@ -1247,3 +1247,63 @@ body {
      el mapa es peor que no tener leyenda. */
   width: 18px; height: 0; border-top: 2px dashed #8794a8;
 }
+
+/* --- Cajón del panel en móvil -------------------------------------------- */
+
+/* Oculto por defecto: por encima de 860 px el panel es fijo y el botón sobra. */
+.panel-boton { display: none; }
+.panel-velo { display: none; }
+
+@media (max-width: 860px) {
+  .panel-boton {
+    display: flex; align-items: center; gap: 6px;
+    position: absolute; z-index: 10;
+    top: calc(var(--cabecera-alto) + var(--aviso-alto) + 8px); left: 8px;
+    /* 44 px de alto mínimo: por debajo de eso un dedo falla más de lo que
+       acierta, y esto se usa con prisa. */
+    min-height: 44px; padding: 0 12px;
+    font: inherit; font-size: .85rem; font-weight: 600; color: var(--ink);
+    background: var(--panel-solido); border: 1px solid var(--line);
+    border-radius: 8px; box-shadow: var(--sombra); cursor: pointer;
+  }
+  .panel-boton__icono {
+    width: 16px; height: 2px; background: currentColor; position: relative;
+  }
+  .panel-boton__icono::before,
+  .panel-boton__icono::after {
+    content: ''; position: absolute; left: 0; width: 16px; height: 2px;
+    background: currentColor;
+  }
+  .panel-boton__icono::before { top: -5px; }
+  .panel-boton__icono::after { top: 5px; }
+
+  .panel-velo {
+    display: block; position: absolute; inset: 0; z-index: 7;
+    background: rgb(0 0 0 / 0.45);
+  }
+  .panel-velo[hidden] { display: none; }
+
+  /* El cajón, por encima del velo. */
+  .panel--izq { box-shadow: var(--sombra-alta); }
+
+  /* Objetivos táctiles: los conmutadores y las filas de la lista se pulsan con
+     el dedo, no con un ratón. */
+  .conmutador, .cruce, .activos__punto, .buscador__opcion {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 860px) {
+  /* Abierto, el botón se aparta al borde del cajón. Encima del panel tapaba la
+     primera fuente de la lista, y desde ahí además hacía de «cerrar» sin que se
+     entendiera qué cerraba. */
+  .panel-boton[aria-expanded="true"] {
+    left: calc(min(280px, 84vw) + 8px);
+    padding: 0 10px;
+  }
+  .panel-boton[aria-expanded="true"] .panel-boton__texto { display: none; }
+  /* Aspa: el icono de tres rayas gira y se queda en cruz. */
+  .panel-boton[aria-expanded="true"] .panel-boton__icono { background: transparent; }
+  .panel-boton[aria-expanded="true"] .panel-boton__icono::before { top: 0; transform: rotate(45deg); }
+  .panel-boton[aria-expanded="true"] .panel-boton__icono::after { top: 0; transform: rotate(-45deg); }
+}
