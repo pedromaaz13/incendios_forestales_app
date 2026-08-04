@@ -77,6 +77,15 @@ jobs:
         working-directory: web
         run: npx tsc --noEmit
 
+      # Va antes de compilar y del E2E a propósito: tarda ~300 ms y cubre
+      # rumbos, distancias y lectura de ficheros, que es donde este frontend
+      # falla devolviendo un número plausible y equivocado. Playwright solo ve
+      # la etiqueta final, no el ángulo que la produjo, así que un sotavento
+      # invertido pasaría sus 102 escenarios sin despeinarse.
+      - name: Pruebas unitarias
+        working-directory: web
+        run: npm test
+
       - name: Compilar
         working-directory: web
         run: npx vite build
