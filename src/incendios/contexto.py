@@ -79,6 +79,7 @@ CAMPOS_CONTEXTO = [
     "aviso_titular",
     "cortes_cerca",
     "cortes_cerca_por_incendio",
+    "cortes_vias",
     "focos_recientes",
     "crecimiento_ha_h",
     "nucleo_cercano",
@@ -237,6 +238,61 @@ def anadir_avisos(
     return salida
 
 
+# Cuántas vías se nombran antes de resumir el resto. Más de tres en una ficha
+# dejan de leerse y empiezan a ser una lista.
+MAX_VIAS = 3
+
+
+def _nombrar_vias(cruce: pd.DataFrame) -> pd.Series:
+    """Las vías cortadas alrededor de cada incendio, las declaradas primero.
+
+    Por qué hace falta, teniendo ya el recuento: «2 cortes cerca» no responde a
+    la pregunta que se hace quien vive al lado, que es **cuál**. La carretera y
+    el punto kilométrico ya venían en el esquema de tráfico y se descartaban en
+    el cruce.
+
+    El orden no es cosmético. Un corte con `por_incendio` lo ha provocado este
+    fuego; uno de obras llevaba ahí desde marzo, y mezclarlos haría creer que el
+    incendio ha cortado media provincia. Los declarados van delante.
+    """
+    if "carretera" not in cruce.columns:
+        return pd.Series(dtype="object")
+
+    def _de_un_incendio(bloque: pd.DataFrame) -> str | None:
+        filas = bloque[bloque["carretera"].notna()]
+        if filas.empty:
+            return None
+
+        # Los declarados por incendio primero; dentro de cada grupo, por nombre,
+        # para que la lista no baile entre ejecuciones con los mismos datos.
+        filas = filas.assign(
+            _orden=~filas["por_incendio"].fillna(False).astype(bool)
+        ).sort_values(["_orden", "carretera"])
+
+        vistas: list[str] = []
+        for _, fila in filas.iterrows():
+            pk = fila.get("pk")
+            etiqueta = str(fila["carretera"]).strip()
+            if pk is not None and not pd.isna(pk):
+                etiqueta = f"{etiqueta} pk {pk}"
+            if etiqueta not in vistas:
+                vistas.append(etiqueta)
+
+        if len(vistas) <= MAX_VIAS:
+            return " · ".join(vistas)
+        # Se dice cuántas quedan fuera: truncar en silencio haría creer que esas
+        # son todas.
+        return " · ".join(vistas[:MAX_VIAS]) + f" · y {len(vistas) - MAX_VIAS} más"
+
+    # Se construye la Serie a mano en vez de con `groupby().apply()`: cuando
+    # ningún incendio tiene vías —todos devuelven None— pandas colapsa el
+    # resultado en un DataFrame vacío y la asignación revienta con «Columns must
+    # be same length as key». Con datos normales no pasa, así que se colaría
+    # hasta el primer día sin cortes cerca de nada.
+    valores = {idx: _de_un_incendio(bloque) for idx, bloque in cruce.groupby(level=0)}
+    return pd.Series(valores, dtype="object")
+
+
 def anadir_cortes(
     incidents: gpd.GeoDataFrame, cortes: gpd.GeoDataFrame | None
 ) -> gpd.GeoDataFrame:
@@ -254,7 +310,11 @@ def anadir_cortes(
 
     crs = _crs_metrico(float(salida.geometry.x.mean()))
     inc_m = salida[["geometry"]].to_crs(crs)
-    cortes_m = cortes[["por_incendio", "geometry"]].to_crs(crs)
+    columnas = ["por_incendio", "geometry"]
+    for extra in ("carretera", "pk"):
+        if extra in cortes.columns:
+            columnas.insert(-1, extra)
+    cortes_m = cortes[columnas].to_crs(crs)
 
     # Buffer en metros y conteo por incendio. Un `sjoin` con el buffer es un
     # solo pase espacial en lugar de una distancia por pareja.
@@ -267,6 +327,7 @@ def anadir_cortes(
         cortes_cerca_por_incendio=("por_incendio", lambda s: int(s.fillna(False).sum())),
     )
 
+    salida["cortes_vias"] = _nombrar_vias(cruce).reindex(salida.index)
     salida["cortes_cerca"] = por_incidente["cortes_cerca"].reindex(salida.index).fillna(0).astype(int)
     salida["cortes_cerca_por_incendio"] = (
         por_incidente["cortes_cerca_por_incendio"].reindex(salida.index).fillna(0).astype(int)

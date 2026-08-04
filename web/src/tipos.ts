@@ -82,6 +82,11 @@ export interface PropiedadesIncidente {
   cortes_cerca: number | null;
   /** De esos, los que la DGT declara causados por incendio. Nunca inferido. */
   cortes_cerca_por_incendio: number | null;
+  /** Qué vías están cortadas alrededor, con su punto kilométrico. Las que la
+   *  DGT declara causadas por incendio van primero: un corte de obras llevaba
+   *  ahí desde marzo y mezclarlos haría creer que el fuego ha cortado media
+   *  provincia. Nulo si no hay ninguna, no cadena vacía. */
+  cortes_vias: string | null;
   /** Focos vistos en las últimas 6 h. Cero puede ser apagado, nube o sin pasada. */
   focos_recientes: number | null;
   /** Superficie nueva detectada por hora. Observada, no prevista. */

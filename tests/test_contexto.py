@@ -416,3 +416,110 @@ def test_un_incendio_equidistante_no_se_duplica():
     salida = contexto.anadir_distancia_poblacion(inc, n)
 
     assert len(salida) == 1
+
+
+# --- Qué vías están cortadas, no solo cuántas -------------------------------
+#
+# «2 cortes cerca» no responde a la pregunta de quien vive al lado, que es
+# **cuál**. La carretera y el punto kilométrico ya venían en el esquema de
+# tráfico y se descartaban en el cruce.
+
+
+def _cortes_con_via(*items: tuple[float, float, bool, str, float | None]) -> gpd.GeoDataFrame:
+    return gpd.GeoDataFrame(
+        {
+            "por_incendio": [i[2] for i in items],
+            "carretera": [i[3] for i in items],
+            "pk": [i[4] for i in items],
+        },
+        geometry=[Point(i[1], i[0]) for i in items],
+        crs=CRS_WGS84,
+    )
+
+
+def test_nombra_la_via_y_su_punto_kilometrico():
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via((40.02, -3.02, True, "N-630", 412.0))
+
+    fila = contexto.anadir_cortes(inc, c).iloc[0]
+
+    assert fila["cortes_vias"] == "N-630 pk 412.0"
+
+
+def test_los_cortes_por_incendio_van_primero():
+    """Un corte declarado por incendio lo ha provocado este fuego; uno de obras
+    llevaba ahí desde marzo. Mezclarlos haría creer que el incendio ha cortado
+    media provincia."""
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via(
+        (40.01, -3.01, False, "A-1", 10.0),
+        (40.02, -3.02, True, "Z-9", 20.0),
+    )
+
+    assert contexto.anadir_cortes(inc, c).iloc[0]["cortes_vias"].startswith("Z-9")
+
+
+def test_a_igualdad_el_orden_es_estable():
+    """Sin un criterio fijo, la lista bailaría entre ejecuciones con los mismos
+    datos y cada publicación parecería un cambio."""
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via(
+        (40.02, -3.02, True, "N-320", 80.0),
+        (40.01, -3.01, True, "A-52", 150.0),
+    )
+
+    assert contexto.anadir_cortes(inc, c).iloc[0]["cortes_vias"] == "A-52 pk 150.0 · N-320 pk 80.0"
+
+
+def test_con_muchas_vias_se_dice_cuantas_quedan_fuera():
+    """Truncar en silencio haría creer que esas son todas las cortadas."""
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via(
+        *[(40.0 + i / 1000, -3.0, False, f"N-{100 + i}", float(i)) for i in range(6)]
+    )
+
+    vias = contexto.anadir_cortes(inc, c).iloc[0]["cortes_vias"]
+
+    assert vias.count("·") == contexto.MAX_VIAS
+    assert "y 3 más" in vias
+
+
+def test_una_via_repetida_no_se_lista_dos_veces():
+    """Dos cortes en el mismo punto de la misma vía son un corte para quien
+    quiere saber si puede pasar."""
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via(
+        (40.01, -3.01, False, "N-630", 412.0),
+        (40.02, -3.02, False, "N-630", 412.0),
+    )
+
+    assert contexto.anadir_cortes(inc, c).iloc[0]["cortes_vias"] == "N-630 pk 412.0"
+
+
+def test_sin_cortes_cerca_las_vias_quedan_nulas():
+    """Nulo y no cadena vacía: el frontend distingue «no hay» de «no se sabe»."""
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via((41.5, -3.0, True, "N-630", 412.0))
+
+    fila = contexto.anadir_cortes(inc, c).iloc[0]
+
+    assert fila["cortes_cerca"] == 0
+    assert fila["cortes_vias"] is None or pd.isna(fila["cortes_vias"])
+
+
+def test_un_corte_sin_carretera_no_rompe_la_lista():
+    """La DGT no siempre rellena el identificador de la vía."""
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via(
+        (40.01, -3.01, True, None, None),
+        (40.02, -3.02, True, "N-630", 412.0),
+    )
+
+    assert contexto.anadir_cortes(inc, c).iloc[0]["cortes_vias"] == "N-630 pk 412.0"
+
+
+def test_una_via_sin_punto_kilometrico_se_nombra_igual():
+    inc = _incendios((40.0, -3.0))
+    c = _cortes_con_via((40.01, -3.01, True, "CL-626", None))
+
+    assert contexto.anadir_cortes(inc, c).iloc[0]["cortes_vias"] == "CL-626"

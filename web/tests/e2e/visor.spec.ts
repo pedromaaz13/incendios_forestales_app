@@ -1102,3 +1102,44 @@ test('una fuente sin margen declarado no enseña la línea', async ({ page }) =>
 
   await expect(page.locator('.fuente__margen')).toHaveCount(0);
 });
+
+test('la ficha dice qué carreteras están cortadas, no solo cuántas', async ({ page }) => {
+  // «2 cortes cerca» no responde a la pregunta de quien vive al lado, que es
+  // cuál. La carretera y el punto kilométrico ya venían en el esquema de
+  // tráfico y se descartaban en el cruce.
+  await page.route('**/live/incidents.geojson', async (ruta) => {
+    const original = await ruta.fetch();
+    const datos = await original.json();
+    const f = datos.features[0];
+    f.properties.cortes_cerca = 2;
+    f.properties.cortes_cerca_por_incendio = 1;
+    f.properties.cortes_vias = 'N-630 pk 412.0 · CL-626 pk 18.0';
+    await ruta.fulfill({ json: { ...datos, features: [f] } });
+  });
+  await abrir(page);
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  const ficha = page.locator('#ficha');
+  await expect(ficha).toContainText('Carreteras cortadas');
+  await expect(ficha.locator('.ficha__vias')).toContainText('N-630 pk 412.0');
+  await expect(ficha.locator('.ficha__vias')).toContainText('CL-626');
+});
+
+test('sin vías conocidas la ficha no inventa la línea', async ({ page }) => {
+  await page.route('**/live/incidents.geojson', async (ruta) => {
+    const original = await ruta.fetch();
+    const datos = await original.json();
+    const f = datos.features[0];
+    f.properties.cortes_cerca = 1;
+    f.properties.cortes_vias = null;
+    await ruta.fulfill({ json: { ...datos, features: [f] } });
+  });
+  await abrir(page);
+  await page.locator('.tarjeta').first().click();
+  await page.waitForTimeout(600);
+
+  // El recuento sigue, pero no se inventa un nombre de carretera.
+  await expect(page.locator('#ficha')).toContainText('Carreteras cortadas');
+  await expect(page.locator('.ficha__vias')).toHaveCount(0);
+});
