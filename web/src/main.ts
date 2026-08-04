@@ -12,7 +12,13 @@ import maplibregl, { type Map as MapaGL } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './estilos.css';
 
-import { cargarGeoJson, cargarIncidentes, cargarManifiesto, cargarSalud } from './datos';
+import {
+  cargarEstatico,
+  cargarGeoJson,
+  cargarIncidentes,
+  cargarManifiesto,
+  cargarSalud,
+} from './datos';
 import {
   CAPA_AIRE,
   CAPA_GRUPOS,
@@ -47,7 +53,13 @@ import {
   anadirCapaViento,
   anadirCapasIncidentes,
   anadirCapasPerimetros,
-  pintarActivos,} from './map/capas';
+  pintarActivos,
+  FUENTE_ELECTRICAS,
+  FUENTE_FERROCARRIL,
+  anadirCapaElectricas,
+  anadirCapaFerrocarril,
+  CAPA_ELECTRICAS,
+  CAPA_FERROCARRIL,} from './map/capas';
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
 import { agruparPorDia, pintarEvolutivo, type DiaEvolutivo } from './ui/evolutivo';
@@ -121,6 +133,7 @@ const estado: Estado = {
   capas: {
     hotspots: true, perimetros: false, viento: false,
     aire: false, trafico: false, avisos: false, suelo: false,
+    electricas: false, ferrocarril: false,
   },
   filtros: { ...FILTROS_INICIALES, sensores: new Set(FILTROS_INICIALES.sensores) },
   dias: [],
@@ -428,6 +441,8 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
     trafico: () => mapa.getSource(FUENTE_TRAFICO),
     avisos: () => mapa.getSource(FUENTE_AVISOS),
     suelo: () => mapa.getSource(FUENTE_SUELO),
+    electricas: () => mapa.getSource(FUENTE_ELECTRICAS),
+    ferrocarril: () => mapa.getSource(FUENTE_FERROCARRIL),
   }[capa];
   if (ya?.()) return;
 
@@ -456,6 +471,23 @@ async function montarCapaDiferida(mapa: MapaGL, capa: string): Promise<void> {
       else porIncendio.set(props.fire_id, [props]);
     }
     registrarFocos(porIncendio);
+  }
+
+  // Son 1,5 y 3,5 MB: solo se piden al activarlas. Cargarlas de entrada se
+  // comería varias veces el presupuesto de la carga inicial (RNF-02) para algo
+  // que la mayoría de visitantes no va a encender.
+  if (capa === 'electricas') {
+    const datos = await cargarEstatico<GeoJSON.FeatureCollection>('electricas.geojson');
+    if (!datos || !mapa.getStyle()) return;
+    mapa.addSource(FUENTE_ELECTRICAS, { type: 'geojson', data: datos });
+    anadirCapaElectricas(mapa);
+  }
+
+  if (capa === 'ferrocarril') {
+    const datos = await cargarEstatico<GeoJSON.FeatureCollection>('ferrocarril.geojson');
+    if (!datos || !mapa.getStyle()) return;
+    mapa.addSource(FUENTE_FERROCARRIL, { type: 'geojson', data: datos });
+    anadirCapaFerrocarril(mapa);
   }
 
   if (capa === 'perimetros') {
@@ -520,6 +552,8 @@ function alternarCapa(mapa: MapaGL, capa: string, activa: boolean): void {
     trafico: [CAPA_TRAFICO, CAPA_TRAFICO_INCENDIO],
     avisos: [CAPA_AVISOS, CAPA_AVISOS_BORDE],
     suelo: [CAPA_SUELO],
+    electricas: [CAPA_ELECTRICAS],
+    ferrocarril: [CAPA_FERROCARRIL],
   };
 
   const aplicar = () => {
@@ -832,6 +866,8 @@ function construirConmutadores(mapa: MapaGL): void {
     ['trafico', 'Carreteras cortadas'],
     ['avisos', 'Avisos de AEMET'],
     ['suelo', 'Tipo de terreno'],
+    ['electricas', 'Líneas eléctricas'],
+    ['ferrocarril', 'Ferrocarril'],
   ];
 
   nodo.innerHTML = capas
@@ -917,6 +953,36 @@ function pintarLeyenda(): void {
       <span class="leyenda__muestra leyenda__muestra--grupo">7</span>
       Varios incendios juntos: la cifra los cuenta. Acerca para separarlos
     </div>
+    ${
+      estado.capas.electricas || estado.capas.ferrocarril
+        ? `<p class="leyenda__grupo">Infraestructura</p>
+           ${
+             estado.capas.electricas
+               ? `<div class="leyenda__fila">
+                    <span class="leyenda__muestra leyenda__muestra--linea" style="--c:#e8a33d"></span>
+                    Naranjas <span class="leyenda__nota">líneas de alta tensión · a más grosor, más kV</span>
+                  </div>`
+               : ''
+           }
+           ${
+             estado.capas.ferrocarril
+               ? `<div class="leyenda__fila">
+                    <span class="leyenda__muestra leyenda__muestra--via"></span>
+                    Discontinua gris <span class="leyenda__nota">ferrocarril</span>
+                  </div>`
+               : ''
+           }
+           <!-- Fechar la descarga importa por lo mismo que en CORINE: es una
+                foto, no tiempo real, y una línea puede haberse construido
+                después. -->
+           <p class="leyenda__aviso">
+             Datos de <b>OpenStreetMap</b> (ODbL), descargados el 04-08-2026.
+             Solo se muestra la red de <b>transporte</b>: las líneas de
+             distribución de baja tensión no están. Es una foto de esa fecha,
+             no el estado actual de la red.
+           </p>`
+        : ''
+    }
     ${
       estado.capas.suelo
         ? `<p class="leyenda__grupo">Tipo de terreno</p>

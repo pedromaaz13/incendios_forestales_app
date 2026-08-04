@@ -5,12 +5,19 @@ pregunta que te estás haciendo decide:
 
 | Tu pregunta | Documento |
 |---|---|
+| ¿Cómo está montado y hasta dónde aguanta? | **ARQUITECTURA.md** |
 | ¿Qué tiene que hacer esto y cómo se comprueba? | **ESPECIFICACION.md** |
 | ¿Qué funciona hoy y qué toca ahora? | **ESTADO-DEL-PROYECTO.md** |
 | ¿Por qué está escrito así? ¿Qué se rompió ya? | **ERRORES-Y-SOLUCIONES.md** |
 | ¿Qué tengo que hacer yo para que haya datos reales? | **COMO-CONECTAR-LAS-FUENTES.md** |
 
 ## En detalle
+
+**ARQUITECTURA.md** · la foto completa, con diagramas. Cómo encaja el pipeline
+con el frontend, qué hace cada módulo, las tres capas de pruebas y **hasta dónde
+escala sin cambiar de arquitectura**. Es el que se lee para entender el sistema
+entero o para decidir si algo nuevo cabe. Todas sus cifras están medidas contra
+el repositorio, no estimadas.
 
 **ESPECIFICACION.md** · el contrato. Requisitos numerados (`RF-P-*` pipeline,
 `RF-F-*` frontend, `RNF-*` no funcionales), pruebas exigidas y criterios de

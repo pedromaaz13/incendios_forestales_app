@@ -64,7 +64,9 @@ export function buscar(indice: Nucleo[], consulta: string, max = MAX_RESULTADOS)
 let indice: Nucleo[] | null = null;
 let cargando: Promise<Nucleo[]> | null = null;
 
-export async function cargarIndice(url = 'nucleos-indice.json'): Promise<Nucleo[]> {
+export async function cargarIndice(
+  url = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/nucleos-indice.json`,
+): Promise<Nucleo[]> {
   if (indice) return indice;
   // Sin esta guarda, teclear rápido dispara una descarga por letra.
   if (cargando) return cargando;
