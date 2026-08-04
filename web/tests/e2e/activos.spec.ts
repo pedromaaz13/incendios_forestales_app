@@ -152,3 +152,19 @@ test('el umbral de cercanía lo elige el usuario y se recuerda', async ({ page }
   await page.reload();
   await expect(page.locator('#activos-km')).toHaveValue('25');
 });
+
+test('el desplegable del buscador es opaco y no deja ver lo de debajo', async ({ page }) => {
+  await abrir(page);
+  await page.fill('#buscador-campo', 'Cascant');
+  await expect(page.locator('#buscador-lista')).toBeVisible();
+
+  const fondo = await page
+    .locator('#buscador-lista')
+    .evaluate((n) => getComputedStyle(n).backgroundColor);
+
+  // Una variable CSS inexistente no da error: el navegador deja la propiedad
+  // sin aplicar y el fondo queda transparente. Así se coló la primera vez, con
+  // la lista de fuentes leyéndose a través de los resultados.
+  expect(fondo).not.toBe('rgba(0, 0, 0, 0)');
+  expect(fondo, 'debe ser opaco, no translúcido').not.toContain('rgba');
+});
