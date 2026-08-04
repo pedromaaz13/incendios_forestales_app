@@ -14,10 +14,15 @@ export const VIEWPORTS = [
   { name: 'escritorio', width: 1680, height: 1050 },
 ] as const;
 
+// Un proveedor que falte aquí no da error: la prueba simplemente empieza a
+// tocar la red y se vuelve lenta e irreproducible. Pasó al añadir el mapa
+// sobrio, que es el estilo por defecto y sirve desde CARTO: 22 escenarios
+// fallaron de golpe. Al añadir un estilo nuevo, su dominio va también aquí.
 const TESELAS = [
   '**://tile.openstreetmap.org/**',
   '**://server.arcgisonline.com/**',
   '**://tile.opentopomap.org/**',
+  '**://*.basemaps.cartocdn.com/**',
 ];
 
 export async function bloquearTeselas(page: Page): Promise<void> {

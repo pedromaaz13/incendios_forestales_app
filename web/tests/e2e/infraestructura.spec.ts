@@ -71,7 +71,7 @@ test('a escala nacional solo se ve la red troncal', async ({ page }) => {
     )
     .toBeGreaterThan(0);
 
-  // El resto de la red tiene minzoom 7.5: a escala nacional (z5.1) no puede
+  // El resto de la red tiene minzoom 8.5: a escala nacional (z5.1) no puede
   // haber nada pintado, o la red taparía los incendios.
   const resto = await page.evaluate(() => {
     const m = (window as never as { __mapa?: maplibregl.Map }).__mapa!;
@@ -81,4 +81,36 @@ test('a escala nacional solo se ve la red troncal', async ({ page }) => {
   });
   expect(resto, 'la capa de resto debe existir').not.toBe(-1);
   expect(resto, 'a z5 no deben pintarse los 132 kV').toBe(0);
+});
+
+test('el mapa por defecto es el sobrio, para que el dato destaque', async ({ page }) => {
+  await abrir(page);
+
+  // OSM estándar pinta las carreteras en naranja y rojo, los mismos tonos que
+  // la rampa de fuego: sobre él, un incendio y una autovía se confunden. El
+  // defecto tiene que ser un fondo que se aparte.
+  const teselas = await page.evaluate(() => {
+    const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+    const f = m?.getStyle().sources.base as { tiles?: string[] } | undefined;
+    return f?.tiles?.[0] ?? '';
+  });
+
+  expect(teselas).toContain('cartocdn');
+  expect(teselas, 'no debe arrancar con OSM estándar').not.toContain('tile.openstreetmap.org');
+});
+
+test('la infraestructura no compite en color con el fuego', async ({ page }) => {
+  await abrir(page);
+  await page.click('[data-capa="electricas"]');
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const m = (window as never as { __mapa?: maplibregl.Map }).__mapa;
+        return m?.getLayer('electricas-troncal')
+          ? String(m.getPaintProperty('electricas-troncal', 'line-color'))
+          : '';
+      }),
+    { timeout: 25000 })
+    .toBe('#1668c9');
 });

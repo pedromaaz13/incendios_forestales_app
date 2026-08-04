@@ -777,6 +777,12 @@ export const CAPA_FERROCARRIL = 'ferrocarril-linea';
  * que llenarían el mapa de ruido sin añadir información.
  *
  * Va **por debajo** de los incendios porque es contexto, no el dato principal.
+ *
+ * **En azul, y no en naranja como estaba.** El naranja ya significaba dos cosas
+ * —intensidad térmica alta y carretera principal de OSM— y añadirle una tercera
+ * hacía que una línea de alta tensión y una autovía fueran indistinguibles.
+ * Medido el 04-08-2026 sobre producción. El azul es la mayor distancia
+ * semántica posible del fuego: lo frío se lee como «esto no arde, es contexto».
  */
 export function anadirCapaElectricas(mapa: MapaGL): void {
   // Dos capas y no una con `['zoom']` dentro de `filter`: ese filtro se evalúa
@@ -791,24 +797,25 @@ export function anadirCapaElectricas(mapa: MapaGL): void {
       filter: ['>=', ['get', 'kv'], 400],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.4, 12, 3.2],
-        'line-color': '#e8a33d',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 1.1, 12, 2.6],
+        'line-color': '#1668c9',
         // Más tenue de lejos: la red es contexto y no debe competir con los
         // círculos de incendio.
-        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 9, 0.85],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 5, 0.4, 9, 0.65],
       },
     },
     CAPA_INCERTIDUMBRE,
   );
 
-  // El resto solo al acercarse: con las 8.584 líneas a la vez, a escala
-  // nacional la red tapa los incendios, que son el dato principal.
+  // El resto solo al acercarse. El umbral subió de 7,5 a 8,5 tras verlo: a z8
+  // aparecían las 8.584 líneas de golpe y los incendios quedaban como puntitos
+  // entre una maraña azul. La infraestructura es el fondo, no el sujeto.
   mapa.addLayer(
     {
       id: CAPA_ELECTRICAS_RESTO,
       type: 'line',
       source: FUENTE_ELECTRICAS,
-      minzoom: 7.5,
+      minzoom: 8.5,
       filter: ['<', ['get', 'kv'], 400],
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
@@ -820,8 +827,8 @@ export function anadirCapaElectricas(mapa: MapaGL): void {
           6, ['case', ['>=', ['get', 'kv'], 220], 1, 0.6],
           12, ['case', ['>=', ['get', 'kv'], 220], 2.2, 1.4],
         ],
-        'line-color': ['case', ['>=', ['get', 'kv'], 220], '#d98b2b', '#a8701f'],
-        'line-opacity': 0.7,
+        'line-color': ['case', ['>=', ['get', 'kv'], 220], '#3d8fdb', '#7aaed6'],
+        'line-opacity': 0.55,
       },
     },
     CAPA_INCERTIDUMBRE,
@@ -838,8 +845,13 @@ export function anadirCapaFerrocarril(mapa: MapaGL): void {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.6, 12, 2],
-        'line-color': '#9aa7b8',
-        'line-opacity': 0.7,
+        // Pizarra oscuro y no el gris claro anterior: sobre el mapa sobrio, que
+        // es gris, un gris claro desaparecía. El oscuro discontinuo es además
+        // como se dibuja una vía en cualquier mapa desde hace un siglo, así que
+        // no hay que explicarlo. Neutro a propósito: ni compite con el naranja
+        // del fuego ni con el azul de la red eléctrica.
+        'line-color': '#3d4756',
+        'line-opacity': 0.6,
         // Discontinua: es como se dibuja una vía en cualquier mapa y evita
         // confundirla con una línea eléctrica a poco zoom.
         'line-dasharray': [3, 2],
