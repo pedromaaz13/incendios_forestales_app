@@ -124,7 +124,11 @@ class OfficialSource(abc.ABC):
                 df[col] = None
 
         df["precision_m"] = df["precision_m"].fillna(m.precision_m)
-        df["reported_at"] = pd.to_datetime(df["reported_at"], utc=True, errors="coerce")
+        # Unidad fijada a ns: pandas 3 infiere segundos y entonces rechaza
+        # rellenar con `Timestamp.now()`, que lleva nanosegundos (11-2026).
+        df["reported_at"] = pd.to_datetime(
+            df["reported_at"], utc=True, errors="coerce"
+        ).dt.as_unit("ns")
         df["reported_at"] = df["reported_at"].fillna(pd.Timestamp.now(tz="UTC"))
 
         bad = ~df["status"].isin(VALID_STATUS)
