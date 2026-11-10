@@ -15,6 +15,8 @@ on:
     # Cada 30 min. Más a menudo no aporta: FIRMS NRT tiene ~3 h de latencia y
     # los minutos de Actions no son infinitos.
     - cron: "*/30 * * * *"
+    # Semanal, solo para el job `mantener-vivo`. Ver su comentario.
+    - cron: "17 4 * * 1"
   workflow_dispatch:
   push:
     branches: [main]
@@ -273,3 +275,21 @@ jobs:
               echo '</details>'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # GitHub desactiva los cron de un repo público tras 60 días sin commits, y lo
+  # hace en silencio: el 04-10-2026 este workflow pasó a `disabled_inactivity`
+  # y el visor estuvo 37 días enseñando la misma foto. Re-habilitar el workflow
+  # por API reinicia ese contador sin ensuciar el historial con commits vacíos.
+  # Corre una vez por semana: muy por debajo de los 60 días, y si falla una
+  # semana quedan otras siete oportunidades.
+  mantener-vivo:
+    if: github.event_name == 'schedule' && github.event.schedule == '17 4 * * 1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: write
+    steps:
+      - name: Re-habilitar el workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/publicar.yml/enable"

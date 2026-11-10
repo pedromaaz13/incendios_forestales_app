@@ -200,4 +200,4 @@ frontend sigue funcionando con GeoJSON.
 
 NASA FIRMS: dominio público, se pide atribución.
 Copernicus: licencia abierta con atribución.
-Basemap: © OpenStreetMap contributors, © CARTO.
+Basemap: © Esri, HERE, Garmin, © OpenStreetMap contributors.

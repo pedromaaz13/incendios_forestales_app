@@ -61,6 +61,7 @@ import {
   CAPA_ELECTRICAS,
   CAPA_ELECTRICAS_RESTO,
   CAPA_FERROCARRIL,} from './map/capas';
+import { duracion, edadDesde, fechaHora, UMBRAL_PIPELINE_PARADO_S } from './formato';
 import { ESTILOS, ESTILO_POR_DEFECTO, esClaveEstilo, type ClaveEstilo } from './map/estilos';
 import { CAPA_VIENTO_ANIMADO, CapaVientoAnimado } from './map/viento-animado';
 import { agruparPorDia, pintarEvolutivo, type DiaEvolutivo } from './ui/evolutivo';
@@ -231,7 +232,12 @@ async function arrancar(): Promise<void> {
     refrescarLista();
   });
 
-  mapa.on('load', () => {
+  // Las capas cuelgan de `style.load`, no de `load`. En MapLibre 4 `load` solo
+  // se emite en un render con todas las teselas resueltas, y si el servidor de
+  // teselas falla puede no llegar nunca: el mapa salía sin un solo incendio
+  // aunque la lista de la derecha sí los tuviera. Para montar capas basta con
+  // que el estilo esté cargado.
+  mapa.once('style.load', () => {
     void datosListos.then(() => {
       montarCapas(mapa);
       conectarInteraccion(mapa);
@@ -361,6 +367,20 @@ function actualizarBanda(): void {
         m.demo_reason ?? 'No corresponden a incendios reales.'
       } Ante una emergencia, 112.`,
       'demo',
+    );
+    return;
+  }
+
+  // Va antes que `degraded` porque lo anula: el `degraded_reason` lo escribió
+  // el pipeline cuando corrió, y si lleva días sin correr sus cifras («el dato
+  // más antiguo tiene 37,8 h») están congeladas y se leen como actuales.
+  const parado = edadDesde(m.generated_at);
+  if (parado !== null && parado > UMBRAL_PIPELINE_PARADO_S) {
+    pintarBanda(
+      `<strong>Este visor no se actualiza desde hace ${duracion(parado)}.</strong> ` +
+        `Lo que ves es la última estimación publicada (${fechaHora(m.generated_at)}) ` +
+        'y no sirve para saber si hay un incendio ahora. Ante una emergencia, 112.',
+      'error',
     );
     return;
   }

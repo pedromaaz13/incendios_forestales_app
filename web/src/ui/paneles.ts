@@ -9,6 +9,7 @@
 
 import {
   duracion,
+  edadAhora,
   edadDesde,
   etiquetaEstadoFuente,
   haceCuanto,
@@ -46,7 +47,8 @@ export function pintarLatencia(manifiesto: Manifiesto | null): void {
     return;
   }
 
-  const edadDato = manifiesto.worst_data_age_seconds;
+  const generado = manifiesto.generated_at;
+  const edadDato = edadAhora(manifiesto.worst_data_age_seconds, generado);
   valorDato.textContent = duracion(edadDato);
   valorDato.dataset.nivel = nivelLatencia(edadDato);
 
@@ -59,6 +61,7 @@ export function pintarLatencia(manifiesto: Manifiesto | null): void {
   // El titular sigue siendo el peor caso, que es la regla del proyecto: enseñar
   // el mejor sería tranquilizar sin fundamento.
   const familias = Object.entries(manifiesto.data_age_seconds ?? {})
+    .map(([id, edad]): [string, number] => [id, edadAhora(edad, generado) ?? edad])
     .sort((a, b) => b[1] - a[1]);
 
   if (!familias.length) {
@@ -113,11 +116,12 @@ export function pintarFuentes(salud: Salud | null): void {
       a.name.localeCompare(b.name, 'es'),
   );
 
-  lista.innerHTML = ordenadas.map(filaFuente).join('');
+  lista.innerHTML = ordenadas.map((f) => filaFuente(f, salud.generated_at)).join('');
 }
 
-function filaFuente(f: Fuente): string {
-  const edad = f.age_seconds === null ? 'sin éxito reciente' : haceCuanto(f.age_seconds);
+function filaFuente(f: Fuente, generado: string): string {
+  const edad =
+    f.age_seconds === null ? 'sin éxito reciente' : haceCuanto(edadAhora(f.age_seconds, generado));
   // `stale_reason` manda cuando existe: dice **quién** ha fallado. «rancio» a
   // secas no distingue «no hemos podido descargar» de «la fuente ha dejado de
   // publicar», y solo el primero se arregla desde aquí.
@@ -145,7 +149,7 @@ function filaFuente(f: Fuente): string {
         </span>
         ${margen(f)}
       </span>
-      <span class="fuente__meta">${f.status === 'ok' ? duracion(f.age_seconds) : ''}</span>
+      <span class="fuente__meta">${f.status === 'ok' ? duracion(edadAhora(f.age_seconds, generado)) : ''}</span>
     </li>`;
 }
 
