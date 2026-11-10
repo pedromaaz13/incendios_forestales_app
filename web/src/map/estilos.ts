@@ -30,27 +30,45 @@ export const ESTILO_POR_DEFECTO: ClaveEstilo = 'sobrio';
 const ATRIBUCION_OSM =
   '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-const ATRIBUCION_CARTO = `${ATRIBUCION_OSM} · © <a href="https://carto.com/attributions">CARTO</a>`;
+/**
+ * Fondos grises de Esri en lugar de CARTO.
+ *
+ * CARTO empezó a exigir clave en sus teselas raster en otoño de 2026, y sin
+ * ella no da error: responde 200 con «API KEY REQUIRED» pintado en cada
+ * tesela. Es el fallo silencioso que este proyecto evita en todo lo demás —el
+ * visor parecía funcionar y no se veía ni una costa—. Meter la clave en el
+ * bundle público sería regalarla, así que se cambia de proveedor.
+ *
+ * El gris de Esri sirve la base y los rótulos por separado; sin la capa de
+ * rótulos no hay nombres de lugar y nadie se orienta. Los dos llegan a z16,
+ * suficiente para situar un pueblo.
+ */
+const ESRI_CANVAS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
+const ATRIBUCION_ESRI_GRIS = `Mapa base © Esri, HERE, Garmin · ${ATRIBUCION_OSM}`;
 
 function estiloRaster(
   teselas: string[],
   atribucion: string,
   maxzoom = 19,
+  rotulos?: string[],
 ): StyleSpecification {
+  const fuente = (tiles: string[], attribution?: string) => ({
+    type: 'raster' as const,
+    tiles,
+    tileSize: 256,
+    maxzoom,
+    ...(attribution ? { attribution } : {}),
+  });
   return {
     version: 8,
     sources: {
-      base: {
-        type: 'raster',
-        tiles: teselas,
-        tileSize: 256,
-        maxzoom,
-        attribution: atribucion,
-      },
+      base: fuente(teselas, atribucion),
+      ...(rotulos ? { rotulos: fuente(rotulos) } : {}),
     },
     layers: [
       { id: 'fondo', type: 'background', paint: { 'background-color': '#0f1619' } },
       { id: 'base', type: 'raster', source: 'base' },
+      ...(rotulos ? [{ id: 'rotulos', type: 'raster' as const, source: 'rotulos' }] : []),
     ],
   };
 }
@@ -59,9 +77,10 @@ export const ESTILOS: Record<ClaveEstilo, { nombre: string; estilo: StyleSpecifi
   sobrio: {
     nombre: 'Sobrio',
     estilo: estiloRaster(
-      ['https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'],
-      ATRIBUCION_CARTO,
-      20,
+      [`${ESRI_CANVAS}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`],
+      ATRIBUCION_ESRI_GRIS,
+      16,
+      [`${ESRI_CANVAS}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
     ),
   },
   normal: {
@@ -92,9 +111,10 @@ export const ESTILOS: Record<ClaveEstilo, { nombre: string; estilo: StyleSpecifi
   oscuro: {
     nombre: 'Oscuro',
     estilo: estiloRaster(
-      ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
-      ATRIBUCION_CARTO,
-      20,
+      [`${ESRI_CANVAS}/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}`],
+      ATRIBUCION_ESRI_GRIS,
+      16,
+      [`${ESRI_CANVAS}/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}`],
     ),
   },
 };

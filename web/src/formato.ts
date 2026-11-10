@@ -56,6 +56,31 @@ export function edadDesde(iso: string | null | undefined, ahora = Date.now()): n
   return Math.max(0, Math.round((ahora - t) / 1000));
 }
 
+/**
+ * Edad de un dato **ahora**, no cuando se escribió el fichero.
+ *
+ * Las edades de `manifest.json` y `health.json` se miden al publicar y el
+ * fichero no envejece solo. Con el cron parado 37 días (10-2026), la cabecera
+ * seguía diciendo «datos satelitales 1 d 13 h» y el panel de fuentes «hace
+ * 23 s»: el número congelado tranquilizaba justo cuando todo estaba muerto.
+ */
+export function edadAhora(
+  edadAlPublicar: number | null | undefined,
+  generadoEn: string | null | undefined,
+  ahora = Date.now(),
+): number | null {
+  if (edadAlPublicar === null || edadAlPublicar === undefined) return null;
+  const desde = edadDesde(generadoEn, ahora);
+  return desde === null ? edadAlPublicar : edadAlPublicar + desde;
+}
+
+/**
+ * El cron publica cada 30 min, pero GitHub retrasa los programados hasta una
+ * hora en horas punta. Por encima de 3 h ya no es retraso: el pipeline está
+ * parado y lo que se ve es una foto vieja.
+ */
+export const UMBRAL_PIPELINE_PARADO_S = 3 * 3600;
+
 export function fechaHora(iso: string | null | undefined): string {
   if (!iso) return '—';
   const t = new Date(iso);

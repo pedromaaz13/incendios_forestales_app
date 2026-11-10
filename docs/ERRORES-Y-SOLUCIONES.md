@@ -24,6 +24,7 @@ tarea. Esto es lo que hay que revisar:
 | **C5** | `bombers` e `infoca` sin feed público en tiempo real conocido | Nadie por ahora: la evidencia apunta a que no existe |
 | **B5** | Una fuente que deja de publicar sale como `ok`: el estado mide la edad de la **descarga**, no la del **dato** | Nosotros · bloque 0 del plan |
 | **C6** | FIRMS no sirve VIIRS desde el 30-07-2026 14:27 (cero filas en 24 h, los tres satélites) | Nadie: es su feed NRT. MODIS sigue dando datos |
+| **F8** | El job `mantener-vivo` re-habilita el cron por API; no verificado aún que eso reinicie el contador de 60 días | Nosotros · comprobar a mediados de enero de 2027 que `publicar` sigue `active` |
 | **C2** | EFFIS caído desde el 27-07-2026 (`Cannot create OCI Handlers`) | Nadie: es su base de datos Oracle. `scripts/vigilar_effis.py` avisa si vuelve |
 
 Ninguno rompe el visor: un fallo de fuente no tumba el pipeline, y los
@@ -702,6 +703,40 @@ JSON con otras claves y una respuesta que no es JSON.
 
 **La lección concreta:** un test que construye el payload que el código espera no
 prueba que el origen mande eso. El fixture tiene que venir del origen.
+
+### F8 · Cuatro fallos silenciosos a la vez tras 37 días sin commits (11-2026)
+
+Ninguno daba error. Juntos dejaron un visor que parecía vivo:
+
+1. **GitHub desactivó el cron.** `publicar.yml` pasó a `disabled_inactivity`
+   el 04-10-2026, a los 60 días del último commit. Sin aviso en el visor.
+2. **La edad del dato satelital estaba congelada.** La cabecera leía
+   `worst_data_age_seconds` tal cual: «1 d 13 h» cuando el dato tenía 39 días.
+   La edad de la ejecución sí se recalculaba con el reloj; la del dato no. Lo
+   mismo en el panel de fuentes («correcto · hace 23 s»).
+3. **La banda repetía un motivo congelado.** «El dato más antiguo tiene 37,8 h»
+   lo escribió el pipeline el día que corrió por última vez.
+4. **CARTO empezó a exigir clave.** Sin ella responde 200 con «API KEY
+   REQUIRED» pintado en cada tesela: mapa sin costas ni nombres.
+
+Y uno latente que salió al arreglar el 4: las capas colgaban de `load`, que en
+MapLibre 4 solo se emite en un render con todas las teselas resueltas. Con el
+servidor de teselas bloqueado, `load` no llegaba y el mapa no pintaba ningún
+incendio aunque la lista los tuviera.
+
+**Solución.**
+- `edadAhora()` en `formato.ts`: edad al publicar + tiempo desde `generated_at`.
+  Se aplica a cabecera, desglose por sensor y panel de fuentes. Test unitario.
+- Banda roja si la última ejecución tiene más de 3 h; tapa el `degraded_reason`
+  congelado. E2E-08b.
+- Fondo «Sobrio» y «Oscuro» pasan al gris de Esri (base + rótulos), sin clave.
+- Capas montadas en `style.load`.
+- Job `mantener-vivo` semanal en `publicar.yml` que re-habilita el workflow por
+  API para reiniciar el contador de 60 días.
+
+**La lección concreta:** todo número que viene de un fichero estático envejece
+fuera del fichero. Si no se recalcula en el cliente, miente en cuanto el
+pipeline se para, que es justo cuando más importa.
 
 ### F1 · El scope `workflow` bloqueaba toda edición de Actions
 

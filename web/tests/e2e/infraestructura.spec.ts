@@ -95,7 +95,8 @@ test('el mapa por defecto es el sobrio, para que el dato destaque', async ({ pag
     return f?.tiles?.[0] ?? '';
   });
 
-  expect(teselas).toContain('cartocdn');
+  expect(teselas).toContain('World_Light_Gray_Base');
+  expect(teselas, 'CARTO exige clave y sin ella pinta una marca de agua').not.toContain('cartocdn');
   expect(teselas, 'no debe arrancar con OSM estándar').not.toContain('tile.openstreetmap.org');
 });
 

@@ -150,7 +150,7 @@ hasta que la carga inicial se ha doblado.
 argumento de venta, no solo higiene — y hay una prueba que falla si aparece
 cualquier `POST`.
 
-**Cinco mapas base**, y el defecto es «Sobrio» (CARTO, sin clave de API) por una
+**Cinco mapas base**, y el defecto es «Sobrio» (gris de Esri, sin clave de API; CARTO la exige desde 11-2026) por una
 razón de lectura y no de gusto: sobre OSM estándar el naranja significa a la vez
 carretera principal, línea de alta tensión e intensidad térmica alta, y con las
 capas de infraestructura encendidas no se distinguía una línea de 400 kV de una

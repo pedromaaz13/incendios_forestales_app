@@ -34,7 +34,9 @@ test('E2E-01b · las dos latencias son números distintos', async ({ page }) => 
   });
   await abrir(page);
 
-  await expect(page.locator('#latencia-dato')).toHaveText('2 h 19 min');
+  // 2 h 19 min al publicar + 4 min desde entonces: el dato envejece con el
+  // reloj, no se queda en la cifra del fichero.
+  await expect(page.locator('#latencia-dato')).toHaveText('2 h 23 min');
   await expect(page.locator('#latencia-pipeline')).toContainText('hace 4 min');
 });
 
@@ -160,12 +162,33 @@ test('E2E-08 · degraded true muestra el motivo', async ({ page }) => {
     demo: false,
     degraded: true,
     degraded_reason: 'INFOCAM sin respuesta desde hace 42 min',
+    // Fijado: si dependiera de cuándo se generó la demo, un `dist` viejo
+    // dispararía el aviso de pipeline parado y esta prueba fallaría por otra cosa.
+    generated_at: new Date().toISOString(),
   });
   await abrir(page);
 
   const banda = page.locator('#banda');
   await expect(banda).toHaveAttribute('data-tono', 'aviso');
   await expect(banda).toContainText('INFOCAM sin respuesta');
+});
+
+test('E2E-08b · pipeline parado: la banda lo dice y tapa el motivo congelado', async ({ page }) => {
+  // El caso de 10-2026: GitHub desactivó el cron por inactividad y el visor
+  // siguió enseñando «el dato más antiguo tiene 37,8 h» durante 37 días.
+  await conManifiesto(page, {
+    demo: false,
+    degraded: true,
+    degraded_reason: 'el dato más antiguo tiene 37.8 h',
+    generated_at: new Date(Date.now() - 37 * 86_400_000).toISOString(),
+  });
+  await abrir(page);
+
+  const banda = page.locator('#banda');
+  await expect(banda).toHaveAttribute('data-tono', 'error');
+  await expect(banda).toContainText('no se actualiza desde hace 37 d');
+  await expect(banda).toContainText('112');
+  await expect(banda).not.toContainText('37.8 h');
 });
 
 // --- E2E-09 · viewport sin incendios ---------------------------------------
